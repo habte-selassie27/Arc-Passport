@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+contracts/.env
+contracts/out/
+contracts/cache/
+node_modules/
+dist/
+build/
+*.pem
+*.key
+foundry.toml.local
+*.log
+.DS_Store
+coverage/
+lcov.info
