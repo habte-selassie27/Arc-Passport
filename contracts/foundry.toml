@@ -1,0 +1,20 @@
+[profile.default]
+src     = "src"
+out     = "out"
+libs    = ["lib"]
+solc    = "0.8.24"
+evm_version      = "prague"
+optimizer        = true
+optimizer_runs   = 200
+
+[profile.high-call]
+optimizer_runs   = 1000
+
+[profile.ci]
+optimizer        = true
+optimizer_runs   = 200
+fuzz             = { runs = 10000 }
+invariant        = { runs = 1000, depth = 50 }
+
+[rpc_endpoints]
+arc_testnet      = "${ARC_RPC_URL}"

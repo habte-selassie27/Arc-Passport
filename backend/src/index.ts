@@ -10,7 +10,7 @@ import passportRoutes from "./routes/passport.js";
 import schemaRoutes from "./routes/schema.js";
 import issuerRoutes from "./routes/issuer.js";
 import { startClaimIndexer } from "./indexer/claimIndexer.js";
-import { startGasPricePolling, startBalancePolling } from "./monitoring/eventMonitor.js";
+import { startGasPricePolling, startBalancePolling, startEventWatchers } from "./monitoring/eventMonitor.js";
 import { RETENTION_POLICY } from "./config/retention.js";
 import kycRoutesV1 from "./routes/v1/kyc.js";
 import credentialsRoutesV1 from "./routes/v1/credentials.js";
@@ -88,6 +88,7 @@ if (process.env.NODE_ENV !== "test") {
     startClaimIndexer();
     startGasPricePolling(30_000);
     startBalancePolling(300_000);
+    startEventWatchers();
   });
 }
 

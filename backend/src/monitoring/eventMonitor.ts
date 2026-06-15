@@ -1,5 +1,8 @@
 import { publicClient } from "../services/arcService.js";
 import { getWalletBalance } from "../services/circleService.js";
+import { ADDRESSES } from "../config/arc.js";
+import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
+import { SCHEMA_REGISTRY_ABI } from "../abis/SchemaRegistry.js";
 import { formatUnits } from "viem";
 
 const ALERT_THRESHOLDS = {
@@ -168,10 +171,6 @@ export function stopBalancePolling() {
  * monitor needs to track for anomaly detection per AGENTS.md §15.8.1.
  */
 export function startEventWatchers() {
-  const { ADDRESSES } = require("../config/arc.js") as typeof import("../config/arc.js");
-  const { ATTESTATION_REGISTRY_ABI } = require("../abis/AttestationRegistry.js") as typeof import("../abis/AttestationRegistry.js");
-  const { SCHEMA_REGISTRY_ABI } = require("../abis/SchemaRegistry.js") as typeof import("../abis/SchemaRegistry.js");
-
   if (ADDRESSES.attestationRegistry) {
     publicClient.watchContractEvent({
       address: ADDRESSES.attestationRegistry,
