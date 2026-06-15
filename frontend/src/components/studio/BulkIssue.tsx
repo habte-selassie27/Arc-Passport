@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { apiUrl } from "../../config/api";
 
 type ServiceKey = "identity" | "kyc" | "credentials" | "dao" | "reputation" | "employment" | "education" | "social" | "custom";
 
@@ -86,7 +87,7 @@ export function BulkIssue() {
   const submit = async () => {
     setSubmit(true); setError(null); setResponse(null);
     try {
-      const res = await fetch("/v1/bulk/csv", {
+      const res = await fetch(apiUrl("/v1/bulk/csv"), {
         method:  "POST",
         headers: {
           "Content-Type":     "application/json",

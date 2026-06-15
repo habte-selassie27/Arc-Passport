@@ -14,3 +14,4 @@ foundry.toml.local
 .DS_Store
 coverage/
 lcov.info
+.vercel
