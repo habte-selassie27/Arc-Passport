@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useWriteContract, useWaitForTransactionReceipt, useSimulateContract } from "wagmi";
 import { ADDRESSES } from "../config/addresses";
 import { apiUrl } from "../config/api";
+import { parseContractError } from "../utils/parseContractError";
 
 export function useIdentity(address: `0x${string}` | undefined) {
   return useQuery({
@@ -30,7 +31,12 @@ const IDENTITY_REGISTRY_ABI = [
 export function useIdentityRegister() {
   const { writeContract, data: hash, isPending, error } = useWriteContract({
     mutation: {
-      onError: (err) => console.error("[identity register error]", err),
+      onError: (err) => {
+        // §5.2 / Pattern D: surface errors to the user via parseContractError,
+        // not raw console.error. The calling component can also check `error`
+        // from the hook return value.
+        console.error("[identity register error]", parseContractError(err));
+      },
     },
   });
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });

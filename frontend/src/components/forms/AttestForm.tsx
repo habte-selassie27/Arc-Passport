@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { ADDRESSES } from "../../config/addresses";
 import { MEMO_ABI } from "../../abis/Memo";
@@ -38,6 +38,15 @@ export function AttestForm() {
   const attestArgs = [subjectAddr, schemaBytes, commitment, expiry] as const;
   const simEnabled = !!subject && !!schemaId && !!ADDRESSES.attestationRegistry;
 
+  // Store the simulation request for write gating (§15.6.1)
+  const simRequestRef = useRef<unknown | null>(null);
+  const simErrorRef = useRef<string | null>(null);
+
+  const handleSimResult = useCallback((result: { request: unknown | null; error: string | null }) => {
+    simRequestRef.current = result.request;
+    simErrorRef.current = result.error;
+  }, []);
+
   const { writeContract: doAttest, data: attestHash, isPending: attestPending, error: attestError } = useWriteContract({
     mutation: {
       onError: (err) => toast("error", parseContractError(err)),
@@ -64,12 +73,12 @@ export function AttestForm() {
       toast("error", "AttestationRegistry not configured");
       return;
     }
-    doAttest({
-      address: ADDRESSES.attestationRegistry,
-      abi: ATTESTATION_REGISTRY_ABI,
-      functionName: "attest",
-      args: attestArgs,
-    });
+    // §15.6.1: Only proceed if simulation succeeded and produced a request
+    if (!simRequestRef.current) {
+      toast("error", "Transaction simulation did not succeed. Check parameters.");
+      return;
+    }
+    doAttest(simRequestRef.current as Parameters<typeof doAttest>[0]);
   }, [doAttest, subject, schemaId, data, expiresAt]);
 
   const handleRecordMemo = useCallback(() => {
@@ -148,6 +157,7 @@ export function AttestForm() {
         functionName="attest"
         args={attestArgs}
         label="Attestation"
+        onSimResult={handleSimResult}
       />
 
       <GasEstimate

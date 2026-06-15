@@ -80,9 +80,27 @@ contract GasBenchmark is Test {
         batcher.batchAttest(inputs);
     }
 
+    function test_gas_batchAttest_25() public {
+        AttestationInput[] memory inputs = new AttestationInput[](25);
+        for (uint i = 0; i < 25; i++) {
+            inputs[i] = AttestationInput(makeAddr(vm.toString(i)), schemaId, DATA, 0);
+        }
+        vm.prank(issuer);
+        batcher.batchAttest(inputs);
+    }
+
     function test_gas_batchAttest_50() public {
         AttestationInput[] memory inputs = new AttestationInput[](50);
         for (uint i = 0; i < 50; i++) {
+            inputs[i] = AttestationInput(makeAddr(vm.toString(i)), schemaId, DATA, 0);
+        }
+        vm.prank(issuer);
+        batcher.batchAttest(inputs);
+    }
+
+    function test_gas_batchAttest_100() public {
+        AttestationInput[] memory inputs = new AttestationInput[](100);
+        for (uint i = 0; i < 100; i++) {
             inputs[i] = AttestationInput(makeAddr(vm.toString(i)), schemaId, DATA, 0);
         }
         vm.prank(issuer);

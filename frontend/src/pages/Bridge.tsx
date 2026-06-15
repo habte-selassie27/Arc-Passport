@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { ADDRESSES } from "../config/addresses";
 import { TOKEN_MESSENGER_ABI } from "../abis/TokenMessenger";
@@ -37,6 +37,12 @@ export function BridgePage() {
   const contractReady = !!ADDRESSES.tokenMessengerV2 && !!tokenMessengerCode;
   const bridgeArgs = [amountBn, domain, recipientBytes, destinationToken] as const;
 
+  const simRequestRef = useRef<unknown | null>(null);
+
+  const handleSimResult = useCallback((result: { request: unknown | null; error: string | null }) => {
+    simRequestRef.current = result.request;
+  }, []);
+
   const handleBridge = () => {
     if (!ADDRESSES.tokenMessengerV2) {
       toast("error", "TokenMessengerV2 not configured");
@@ -46,12 +52,11 @@ export function BridgePage() {
       toast("error", "Recipient address required");
       return;
     }
-    doDeposit({
-      address: ADDRESSES.tokenMessengerV2,
-      abi: TOKEN_MESSENGER_ABI,
-      functionName: "depositForBurn",
-      args: bridgeArgs,
-    });
+    if (!simRequestRef.current) {
+      toast("error", "Transaction simulation did not succeed. Check parameters.");
+      return;
+    }
+    doDeposit(simRequestRef.current as Parameters<typeof doDeposit>[0]);
   };
 
   return (
@@ -134,6 +139,7 @@ export function BridgePage() {
           functionName="depositForBurn"
           args={bridgeArgs}
           label="Bridge USDC"
+          onSimResult={handleSimResult}
         />
 
         <GasEstimate

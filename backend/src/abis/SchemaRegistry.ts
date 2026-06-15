@@ -1,5 +1,15 @@
 export const SCHEMA_REGISTRY_ABI = [
   {
+    type: "event",
+    name: "SchemaRegistered",
+    inputs: [
+      { name: "schemaId", type: "bytes32", indexed: false },
+      { name: "registrant", type: "address", indexed: false },
+      { name: "name", type: "string", indexed: false },
+      { name: "version", type: "string", indexed: false },
+    ],
+  },
+  {
     type: "function",
     name: "registerSchema",
     inputs: [

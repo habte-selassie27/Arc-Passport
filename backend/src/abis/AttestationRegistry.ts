@@ -10,6 +10,24 @@ export const ATTESTATION_REGISTRY_ABI = [
     ],
   },
   {
+    type: "event",
+    name: "ClaimRevoked",
+    inputs: [
+      { name: "claimId", type: "bytes32", indexed: true },
+      { name: "revoker", type: "address", indexed: true },
+      { name: "timestamp", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "RoleGranted",
+    inputs: [
+      { name: "role", type: "bytes32", indexed: true },
+      { name: "account", type: "address", indexed: true },
+      { name: "sender", type: "address", indexed: true },
+    ],
+  },
+  {
     type: "function",
     name: "ISSUER_ROLE",
     inputs: [],

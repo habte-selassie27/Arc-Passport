@@ -9,9 +9,11 @@ interface TransactionPreviewProps {
   functionName: string;
   args: readonly unknown[];
   label: string;
+  /** Called when simulation completes. The caller can use this to gate the write call. */
+  onSimResult?: (result: { request: unknown | null; error: string | null }) => void;
 }
 
-export function TransactionPreview({ enabled, address, abi, functionName, args, label }: TransactionPreviewProps) {
+export function TransactionPreview({ enabled, address, abi, functionName, args, label, onSimResult }: TransactionPreviewProps) {
   const { data, isLoading, isError, error } = useSimulateContract({
     address,
     abi,
@@ -19,6 +21,14 @@ export function TransactionPreview({ enabled, address, abi, functionName, args, 
     args,
     query: { enabled },
   });
+
+  // Notify parent of simulation result for write gating
+  if (onSimResult && enabled && !isLoading) {
+    onSimResult({
+      request: data?.request ?? null,
+      error: isError ? parseContractError(error) : null,
+    });
+  }
 
   if (!enabled) return null;
 

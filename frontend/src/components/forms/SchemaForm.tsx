@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useWriteContract } from "wagmi";
 import { keccak256, encodePacked } from "viem";
 import { ADDRESSES } from "../../config/addresses";
@@ -37,6 +37,12 @@ export function SchemaForm() {
     return keccak256(encodePacked(["string", "string", "string"], [name, version, fieldsJson]));
   }, [name, version, fieldsJson]);
 
+  const simRequestRef = useRef<unknown | null>(null);
+
+  const handleSimResult = useCallback((result: { request: unknown | null; error: string | null }) => {
+    simRequestRef.current = result.request;
+  }, []);
+
   const { writeContract, data: hash, isPending, error } = useWriteContract({
     mutation: {
       onError: (err) => toast("error", parseContractError(err)),
@@ -67,12 +73,11 @@ export function SchemaForm() {
       toast("error", "All fields must have a name and type");
       return;
     }
-    writeContract({
-      address: ADDRESSES.schemaRegistry,
-      abi: SCHEMA_REGISTRY_ABI,
-      functionName: "registerSchema",
-      args: [name, version, fieldsJson],
-    });
+    if (!simRequestRef.current) {
+      toast("error", "Transaction simulation did not succeed. Check schema parameters.");
+      return;
+    }
+    writeContract(simRequestRef.current as Parameters<typeof writeContract>[0]);
   }, [writeContract, name, version, fieldsJson, fields]);
 
   return (
@@ -179,6 +184,7 @@ export function SchemaForm() {
         functionName="registerSchema"
         args={regArgs}
         label="Schema Registration"
+        onSimResult={handleSimResult}
       />
 
       <GasEstimate

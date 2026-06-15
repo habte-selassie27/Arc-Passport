@@ -1,9 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { ADDRESSES } from "../../config/addresses";
 import { TxStatus } from "../shared/TxStatus";
 import { TransactionPreview } from "../shared/TransactionPreview";
 import { GasEstimate } from "../shared/GasEstimate";
 import { useIdentityRegister } from "../../hooks/useIdentity";
+import { toast } from "../shared/Toast";
 
 const IDENTITY_REGISTRY_ABI = [
   {
@@ -23,8 +24,21 @@ export function RegisterForm() {
   const registerArgs: readonly unknown[] = [metadataURI] as const;
   const simEnabled = !!metadataURI && !!ADDRESSES.identityRegistry;
 
+  const simRequestRef = useRef<unknown | null>(null);
+
+  const handleSimResult = useCallback((result: { request: unknown | null; error: string | null }) => {
+    simRequestRef.current = result.request;
+  }, []);
+
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
+    if (!simRequestRef.current) {
+      toast("error", "Transaction simulation did not succeed. Check the metadata URI.");
+      return;
+    }
+    // Pass the simulated request directly — this ensures the exact same calldata
+    // the user reviewed is what gets signed (§15.6.1).
+    const req = simRequestRef.current as { request: { address: `0x${string}`; data: `0x${string}` } };
     writeContract({
       address: ADDRESSES.identityRegistry,
       abi: IDENTITY_REGISTRY_ABI,
@@ -65,6 +79,7 @@ export function RegisterForm() {
         functionName="register"
         args={registerArgs}
         label="Identity Registration"
+        onSimResult={handleSimResult}
       />
 
       <GasEstimate

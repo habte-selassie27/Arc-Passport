@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useWriteContract } from "wagmi";
 import { ADDRESSES } from "../../config/addresses";
 import { ATTESTATION_REGISTRY_ABI } from "../../abis/AttestationRegistry";
@@ -14,6 +14,12 @@ export function RevokeForm() {
   const revokeArgs: readonly unknown[] = [claimId as `0x${string}`] as const;
   const simEnabled = !!claimId && claimId.startsWith("0x") && !!ADDRESSES.attestationRegistry;
 
+  const simRequestRef = useRef<unknown | null>(null);
+
+  const handleSimResult = useCallback((result: { request: unknown | null; error: string | null }) => {
+    simRequestRef.current = result.request;
+  }, []);
+
   const { writeContract, data: hash, isPending, error } = useWriteContract({
     mutation: {
       onError: (err) => toast("error", parseContractError(err)),
@@ -26,12 +32,11 @@ export function RevokeForm() {
       toast("error", "claimId must be a hex string starting with 0x");
       return;
     }
-    writeContract({
-      address: ADDRESSES.attestationRegistry!,
-      abi: ATTESTATION_REGISTRY_ABI,
-      functionName: "revoke",
-      args: [claimId as `0x${string}`],
-    });
+    if (!simRequestRef.current) {
+      toast("error", "Transaction simulation did not succeed. Check the claim ID.");
+      return;
+    }
+    writeContract(simRequestRef.current as Parameters<typeof writeContract>[0]);
   }, [writeContract, claimId]);
 
   return (
@@ -56,6 +61,7 @@ export function RevokeForm() {
         functionName="revoke"
         args={revokeArgs}
         label="Revocation"
+        onSimResult={handleSimResult}
       />
 
       <GasEstimate

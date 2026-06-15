@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { ADDRESSES } from "../../config/addresses";
 import { SCHEMA_REGISTRY_ABI } from "../../abis/SchemaRegistry";
@@ -17,6 +17,12 @@ export function SchemaBuilder() {
   const fieldsJson = JSON.stringify(fields.map((f) => ({ name: f.name, type: f.type })));
   const regArgs = [name, version, fieldsJson] as const;
   const canRegister = !!name && !!version && fields.length > 0 && fields.every((f) => f.name && f.type) && !!ADDRESSES.schemaRegistry;
+
+  const simRequestRef = useRef<unknown | null>(null);
+
+  const handleSimResult = useCallback((result: { request: unknown | null; error: string | null }) => {
+    simRequestRef.current = result.request;
+  }, []);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract({
     mutation: {
@@ -37,12 +43,11 @@ export function SchemaBuilder() {
       toast("error", "All fields must have a name and type");
       return;
     }
-    writeContract({
-      address: ADDRESSES.schemaRegistry,
-      abi: SCHEMA_REGISTRY_ABI,
-      functionName: "registerSchema",
-      args: [name, version, fieldsJson],
-    });
+    if (!simRequestRef.current) {
+      toast("error", "Transaction simulation did not succeed. Check schema parameters.");
+      return;
+    }
+    writeContract(simRequestRef.current as Parameters<typeof writeContract>[0]);
   }, [writeContract, name, version, fieldsJson, fields]);
 
   const pending = isPending || isConfirming;
@@ -93,6 +98,7 @@ export function SchemaBuilder() {
         functionName="registerSchema"
         args={regArgs}
         label="Schema Registration"
+        onSimResult={handleSimResult}
       />
 
       <GasEstimate

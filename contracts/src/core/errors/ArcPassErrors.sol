@@ -30,3 +30,7 @@ error ArcPass__DelegationExpired();
 error ArcPass__InvalidSignature();
 error ArcPass__EmptyVersion();
 error ArcPass__SchemaListExhausted();
+
+// Gate contract errors
+error ArcPass__KycNotVerified(address subject, uint8 requiredLevel);
+error ArcPass__ScoreBelowThreshold(address subject, uint256 score, uint256 required);

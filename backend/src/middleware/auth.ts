@@ -1,6 +1,19 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyMessage } from "viem";
 
+/**
+ * In-memory nonce store for replay prevention. Each address tracks used nonces
+ * in a Set<string>. Nonces are UUIDs generated client-side per request.
+ *
+ * LIMITATION: This store is ephemeral — it resets on server restart and is not
+ * shared across instances. For testnet this is acceptable. For production
+ * deployments with multiple backend instances or restart requirements, migrate
+ * to Redis with a TTL matching the signed message time window (e.g., 5 minutes).
+ *
+ * Per AGENTS.md §15.5.2, this prevents signature replay within a single server
+ * lifetime. The signed message includes `req.originalUrl` and a timestamp-truncated
+ * nonce, providing route-scoped and time-scoped replay protection.
+ */
 const USED_NONCES = new Map<string, Set<string>>();
 
 export async function requireSignedNonce(
