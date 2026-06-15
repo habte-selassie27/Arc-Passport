@@ -22,7 +22,7 @@ const attestWriteLimiter = rateLimit({
   message: { success: false, error: { code: "RATE_LIMITED", message: "Too many write requests (max 5/min)" } },
 });
 
-router.post("/attest", requireSignedNonce, issuerGuard, async (req: Request, res: Response) => {
+router.post("/attest", requireSignedNonce, issuerGuard, attestWriteLimiter, async (req: Request, res: Response) => {
   try {
     const { subject, schemaId, dataCommitment, expiresAt, complianceRef } = req.body;
     if (!subject || !schemaId || dataCommitment === undefined) {
@@ -54,7 +54,7 @@ router.post("/attest", requireSignedNonce, issuerGuard, async (req: Request, res
   }
 });
 
-router.post("/revoke", requireSignedNonce, issuerGuard, async (req: Request, res: Response) => {
+router.post("/revoke", requireSignedNonce, issuerGuard, attestWriteLimiter, async (req: Request, res: Response) => {
   try {
     const { claimId } = req.body;
     if (!claimId) {

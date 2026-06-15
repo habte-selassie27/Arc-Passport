@@ -31,6 +31,7 @@ const PORT = parseInt(process.env.PORT || "3001", 10);
 app.use(cors());
 app.use(express.json());
 
+// Global rate limit — all routes
 app.use(
   rateLimit({
     windowMs: 60_000,
@@ -40,6 +41,16 @@ app.use(
     message: { success: false, error: { code: "RATE_LIMITED" } },
   })
 );
+
+// Strict rate limit on all v1 service write endpoints: max 10 per address per minute.
+// These all route through the same Circle issuer wallet, so a flood from one address
+// can drain gas for all services. Per AGENTS.md §15.5.3.
+const v1WriteLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  keyGenerator: (req) => (req.headers["x-wallet-address"] as string) || req.ip,
+  message: { success: false, error: { code: "RATE_LIMITED", message: "Too many service requests (max 10/min)" } },
+});
 
 app.get("/health", (_req, res) => {
   res.json({ success: true, data: { status: "ok", timestamp: Date.now() } });
@@ -56,15 +67,15 @@ app.use("/passport", passportRoutes);
 app.use("/schema", schemaRoutes);
 app.use("/issuer", issuerRoutes);
 
-app.use("/v1/kyc", kycRoutesV1);
-app.use("/v1/credentials", credentialsRoutesV1);
-app.use("/v1/dao", daoRoutesV1);
-app.use("/v1/identity", identityRoutesV1);
-app.use("/v1/reputation", reputationRoutesV1);
-app.use("/v1/employment", employmentRoutesV1);
-app.use("/v1/education", educationRoutesV1);
-app.use("/v1/social", socialRoutesV1);
-app.use("/v1/custom", customRoutesV1);
+app.use("/v1/kyc", v1WriteLimiter, kycRoutesV1);
+app.use("/v1/credentials", v1WriteLimiter, credentialsRoutesV1);
+app.use("/v1/dao", v1WriteLimiter, daoRoutesV1);
+app.use("/v1/identity", v1WriteLimiter, identityRoutesV1);
+app.use("/v1/reputation", v1WriteLimiter, reputationRoutesV1);
+app.use("/v1/employment", v1WriteLimiter, employmentRoutesV1);
+app.use("/v1/education", v1WriteLimiter, educationRoutesV1);
+app.use("/v1/social", v1WriteLimiter, socialRoutesV1);
+app.use("/v1/custom", v1WriteLimiter, customRoutesV1);
 app.use("/v1/passport", passportRoutesV1);
 app.use("/v1/bulk", bulkRoutesV1);
 app.use("/v1", openapiRoutesV1);

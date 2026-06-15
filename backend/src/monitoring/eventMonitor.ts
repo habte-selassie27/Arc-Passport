@@ -160,3 +160,51 @@ export function stopBalancePolling() {
     balancePollInterval = null;
   }
 }
+
+/**
+ * Starts live event watchers for RoleGranted and SchemaRegistered events.
+ * ClaimIssued and ClaimRevoked are handled by claimIndexer.ts (which calls
+ * processEvent). This function covers the remaining event types that the
+ * monitor needs to track for anomaly detection per AGENTS.md §15.8.1.
+ */
+export function startEventWatchers() {
+  const { ADDRESSES } = require("../config/arc.js") as typeof import("../config/arc.js");
+  const { ATTESTATION_REGISTRY_ABI } = require("../abis/AttestationRegistry.js") as typeof import("../abis/AttestationRegistry.js");
+  const { SCHEMA_REGISTRY_ABI } = require("../abis/SchemaRegistry.js") as typeof import("../abis/SchemaRegistry.js");
+
+  if (ADDRESSES.attestationRegistry) {
+    publicClient.watchContractEvent({
+      address: ADDRESSES.attestationRegistry,
+      abi: ATTESTATION_REGISTRY_ABI,
+      eventName: "RoleGranted",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          processEvent({
+            name: "RoleGranted",
+            args: log.args as Record<string, unknown>,
+            blockNumber: log.blockNumber,
+            logIndex: log.logIndex ?? 0,
+          });
+        }
+      },
+    });
+  }
+
+  if (ADDRESSES.schemaRegistry) {
+    publicClient.watchContractEvent({
+      address: ADDRESSES.schemaRegistry,
+      abi: SCHEMA_REGISTRY_ABI,
+      eventName: "SchemaRegistered",
+      onLogs: (logs) => {
+        for (const log of logs) {
+          processEvent({
+            name: "SchemaRegistered",
+            args: log.args as Record<string, unknown>,
+            blockNumber: log.blockNumber,
+            logIndex: log.logIndex ?? 0,
+          });
+        }
+      },
+    });
+  }
+}
