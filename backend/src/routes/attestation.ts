@@ -18,7 +18,7 @@ const router = Router();
 const attestWriteLimiter = rateLimit({
   windowMs: 60_000,
   max: 5,
-  keyGenerator: (req) => (req.headers["x-wallet-address"] as string) || req.ip,
+  keyGenerator: (req) => (req.headers["x-wallet-address"] as string) || req.ip || "unknown",
   message: { success: false, error: { code: "RATE_LIMITED", message: "Too many write requests (max 5/min)" } },
 });
 

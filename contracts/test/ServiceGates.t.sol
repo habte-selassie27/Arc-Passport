@@ -9,6 +9,7 @@ import { PassportVerifier }  from "../src/core/PassportVerifier.sol";
 import { KycGate }           from "../src/services/verifiers/KycGate.sol";
 import { DaoMembershipGate } from "../src/services/verifiers/DaoMembershipGate.sol";
 import { ReputationGate }    from "../src/services/verifiers/ReputationGate.sol";
+import { ArcPass__KycNotVerified, ArcPass__ScoreBelowThreshold } from "../src/core/errors/ArcPassErrors.sol";
 import { KYC_BASIC_ID }           from "../src/services/schemas/KycSchemas.sol";
 import { DAO_MEMBERSHIP_ID }      from "../src/services/schemas/DaoSchemas.sol";
 import { REPUTATION_SCORE_ID }    from "../src/services/schemas/ReputationSchemas.sol";
@@ -111,7 +112,7 @@ contract ServiceGatesTest is Test {
     }
 
     function test_KycGate_modifier_revertsForUnverified() public {
-        vm.expectRevert(bytes("KycGate: not KYC verified at required level"));
+        vm.expectRevert(abi.encodeWithSelector(ArcPass__KycNotVerified.selector, subject, 1));
         kycGate.requireKycVerified(subject, 1);
     }
 
@@ -158,7 +159,7 @@ contract ServiceGatesTest is Test {
     }
 
     function test_RepGate_modifier_revertsForUnreputable() public {
-        vm.expectRevert(bytes("ReputationGate: score below threshold"));
+        vm.expectRevert(abi.encodeWithSelector(ArcPass__ScoreBelowThreshold.selector, subject, 0, 100));
         repGate.requireReputable(subject);
     }
 

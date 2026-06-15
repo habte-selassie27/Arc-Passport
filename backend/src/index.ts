@@ -48,8 +48,8 @@ app.use(
 const v1WriteLimiter = rateLimit({
   windowMs: 60_000,
   max: 10,
-  keyGenerator: (req) => (req.headers["x-wallet-address"] as string) || req.ip,
-  message: { success: false, error: { code: "RATE_LIMITED", message: "Too many service requests (max 10/min)" } },
+  keyGenerator: (req) => (req.headers["x-wallet-address"] as string) || req.ip || "unknown",
+  message: { success: false, error: { code: "RATE_LIMITED", message: "Too many write requests (max 5/min)" } },
 });
 
 app.get("/health", (_req, res) => {

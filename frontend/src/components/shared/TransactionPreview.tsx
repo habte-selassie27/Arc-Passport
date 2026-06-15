@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useSimulateContract } from "wagmi";
 import { parseContractError } from "../../utils/parseContractError";
 import type { Address } from "viem";
@@ -22,13 +23,15 @@ export function TransactionPreview({ enabled, address, abi, functionName, args, 
     query: { enabled },
   });
 
-  // Notify parent of simulation result for write gating
-  if (onSimResult && enabled && !isLoading) {
-    onSimResult({
-      request: data?.request ?? null,
-      error: isError ? parseContractError(error) : null,
-    });
-  }
+  // Notify parent of simulation result for write gating (§15.6.1)
+  useEffect(() => {
+    if (onSimResult && enabled && !isLoading) {
+      onSimResult({
+        request: data?.request ?? null,
+        error: isError ? parseContractError(error) : null,
+      });
+    }
+  }, [onSimResult, enabled, isLoading, data, isError, error]);
 
   if (!enabled) return null;
 
