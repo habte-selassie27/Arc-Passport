@@ -11,7 +11,7 @@ import { toast } from "../shared/Toast";
 
 export function SchemaBuilder() {
   const [name, setName] = useState("");
-  const [version, setVersion] = useState("1.0.0");
+  const [version, setVersion] = useState("3.0.0");
   const [fields, setFields] = useState<FieldDef[]>([{ name: "", type: "string" }]);
 
   const fieldsJson = JSON.stringify(fields.map((f) => ({ name: f.name, type: f.type })));

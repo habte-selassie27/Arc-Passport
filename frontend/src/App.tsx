@@ -11,6 +11,11 @@ import { StudioPage } from "./pages/studio/Studio";
 import { KycVerifyPage } from "./pages/services/KycVerify";
 import { CredentialViewPage } from "./pages/services/CredentialView";
 import { ReputationViewPage } from "./pages/services/ReputationView";
+import { DaoVerifyPage } from "./pages/services/DaoVerify";
+import { EmploymentVerifyPage } from "./pages/services/EmploymentVerify";
+import { EducationVerifyPage } from "./pages/services/EducationVerify";
+import { SocialVerifyPage } from "./pages/services/SocialVerify";
+import { CustomVerifyPage } from "./pages/services/CustomVerify";
 import { WalletButton } from "./components/shared/WalletButton";
 import { ThemeToggle } from "./components/shared/ThemeToggle";
 import { ToastContainer } from "./components/shared/Toast";
@@ -86,6 +91,16 @@ export default function App() {
                 <Route path="/services/kyc/:address" element={<KycVerifyPage />} />
                 <Route path="/services/credentials/:address" element={<CredentialViewPage />} />
                 <Route path="/services/reputation/:address" element={<ReputationViewPage />} />
+                <Route path="/services/dao" element={<DaoVerifyPage />} />
+                <Route path="/services/dao/:address" element={<DaoVerifyPage />} />
+                <Route path="/services/employment" element={<EmploymentVerifyPage />} />
+                <Route path="/services/employment/:address" element={<EmploymentVerifyPage />} />
+                <Route path="/services/education" element={<EducationVerifyPage />} />
+                <Route path="/services/education/:address" element={<EducationVerifyPage />} />
+                <Route path="/services/social" element={<SocialVerifyPage />} />
+                <Route path="/services/social/:address" element={<SocialVerifyPage />} />
+                <Route path="/services/custom" element={<CustomVerifyPage />} />
+                <Route path="/services/custom/:address" element={<CustomVerifyPage />} />
               </Routes>
             </main>
           </div>

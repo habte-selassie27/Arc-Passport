@@ -1,9 +1,9 @@
 import { Router, Request, Response } from "express";
 import { CustomAttestationService } from "../../services/attestation/custom/CustomAttestationService.js";
 import type { AttestInput } from "../../services/attestation/base/BaseAttestationService.js";
-import { getService } from "../../services/attestation/index.js";
 import { computeSchemaId } from "../../utils/schemaHash.js";
-import { getSchemaById } from "../../constants/schemas.js";
+import { getSchemaById, ALL_SCHEMAS } from "../../constants/schemas.js";
+import { getClaimsBySubject, waitForIndexerReady } from "../../indexer/claimIndexer.js";
 import { requireSignedNonce } from "../../middleware/auth.js";
 import { validateBody } from "../../utils/validate.js";
 import { asAddress, asSchemaId } from "../../utils/address.js";
@@ -11,6 +11,14 @@ import { RegisterSchemaBody, CustomAttestBody } from "../../openapi/schemas.js";
 
 const router = Router();
 const custom = new CustomAttestationService();
+
+/** Set of known schema IDs for services 1–8. Custom claims are those NOT in this set. */
+const KNOWN_SCHEMA_IDS = new Set<string>();
+for (const schemas of Object.values(ALL_SCHEMAS)) {
+  for (const def of Object.values(schemas as Record<string, { id?: `0x${string}` }>)) {
+    if (def.id) KNOWN_SCHEMA_IDS.add(def.id.toLowerCase());
+  }
+}
 
 router.post("/schema/register", requireSignedNonce, validateBody(RegisterSchemaBody), async (req: Request, res: Response) => {
   try {
@@ -53,13 +61,21 @@ router.post("/attest", requireSignedNonce, validateBody(CustomAttestBody), async
 
 router.get("/claims/:address", async (req: Request, res: Response) => {
   try {
+    await waitForIndexerReady();
     const address = req.params.address;
     if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
       res.status(400).json({ success: false, error: { code: "INVALID_SUBJECT", message: "address must be 0x + 40 hex chars" } });
       return;
     }
-    const claims = await getService("custom").getClaims(asAddress(address), null);
-    res.json({ success: true, data: { address, claims } });
+    const indexedClaims = getClaimsBySubject(address as `0x${string}`)
+      .filter((c) => !KNOWN_SCHEMA_IDS.has(c.schemaId.toLowerCase()));
+    const claims = indexedClaims.map((c) => ({
+      claimId: c.claimId,
+      schemaId: c.schemaId,
+      issuer: c.issuer,
+      valid: true,
+    }));
+    res.json({ success: true, data: { address, verified: claims.length > 0, claimCount: claims.length, claims } });
   } catch (err: unknown) {
     res.status(500).json({ success: false, error: { code: "FETCH_ERROR", message: (err as Error).message } });
   }

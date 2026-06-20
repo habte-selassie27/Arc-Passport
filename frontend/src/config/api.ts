@@ -11,7 +11,7 @@
  */
 export const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") ||
-  (import.meta.env.PROD ? "/_/backend" : "http://localhost:3001");
+  (import.meta.env.PROD ? "/api" : "http://localhost:3001");
 
 export function apiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;

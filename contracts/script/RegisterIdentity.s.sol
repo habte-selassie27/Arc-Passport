@@ -9,25 +9,26 @@ contract RegisterIdentity is Script {
     address constant IDENTITY_REGISTRY = 0x8004A818BFB912233c491871b3d84c89A494BD9e;
 
     function run() external {
+        string memory env = vm.envString("DEPLOYMENT_ENV");
+        require(
+            keccak256(bytes(env)) == keccak256(bytes("testnet")) ||
+            keccak256(bytes(env)) == keccak256(bytes("mainnet-confirmed")),
+            "Set DEPLOYMENT_ENV=testnet or DEPLOYMENT_ENV=mainnet-confirmed"
+        );
+
         uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(deployerKey);
+        string memory metadataURI = vm.envOr("METADATA_CID", string("ipfs://QmPlaceholder"));
+
+        console2.log("Registering identity for:", deployer);
+        console2.log("Metadata URI:", metadataURI);
 
         vm.startBroadcast(deployerKey);
 
         IERC8004IdentityRegistry registry = IERC8004IdentityRegistry(IDENTITY_REGISTRY);
-
-        string memory metadataURI = string(
-            abi.encodePacked(
-                "ipfs://Qm",
-                vm.envOr("METADATA_CID", string("0000000000000000000000000000000000000000"))
-            )
-        );
-
         uint256 tokenId = registry.register(metadataURI);
-        console2.log("Identity registered, tokenId:", tokenId);
 
-        (uint256 id, string memory uri) = registry.getIdentity(deployer);
-        console2.log("Verified - tokenId:", id, "URI:", uri);
+        console2.log("Identity registered! tokenId:", tokenId);
 
         vm.stopBroadcast();
     }

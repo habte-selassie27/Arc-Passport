@@ -10,7 +10,7 @@ export interface SchemaTemplate {
 
 const BASIC_IDENTITY_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_identity",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Basic identity record (display name + avatar)",
   fields: [
     { name: "displayName", type: "string" },
@@ -21,7 +21,7 @@ const BASIC_IDENTITY_TEMPLATE: SchemaTemplate = {
 
 const LIVENESS_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_liveness",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Liveness verification (boolean result + provider)",
   fields: [
     { name: "verified",  type: "bool"   },
@@ -32,7 +32,7 @@ const LIVENESS_TEMPLATE: SchemaTemplate = {
 
 const KYC_BASIC_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_kyc_basic",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Tier 1 KYC: name + country confirmed",
   fields: [
     { name: "level",     type: "uint8"  },
@@ -44,7 +44,7 @@ const KYC_BASIC_TEMPLATE: SchemaTemplate = {
 
 const AML_SCREENING_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_aml_screening",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "AML / sanctions screening result",
   fields: [
     { name: "passed",    type: "bool"   },
@@ -55,7 +55,7 @@ const AML_SCREENING_TEMPLATE: SchemaTemplate = {
 
 const AGE_OVER_18_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_age_over18",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Privacy-preserving age gate (boolean only)",
   fields: [
     { name: "over18",    type: "bool"   },
@@ -66,7 +66,7 @@ const AGE_OVER_18_TEMPLATE: SchemaTemplate = {
 
 const CERTIFICATION_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_certification",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Generic professional certification",
   fields: [
     { name: "certName",    type: "string" },
@@ -79,7 +79,7 @@ const CERTIFICATION_TEMPLATE: SchemaTemplate = {
 
 const SKILL_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_skill",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Peer skill endorsement (level 1-3)",
   fields: [
     { name: "skill",      type: "string"  },
@@ -90,7 +90,7 @@ const SKILL_TEMPLATE: SchemaTemplate = {
 
 const DAO_MEMBERSHIP_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_dao_membership",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "DAO membership record with role + voting weight",
   fields: [
     { name: "daoName",      type: "string"  },
@@ -103,7 +103,7 @@ const DAO_MEMBERSHIP_TEMPLATE: SchemaTemplate = {
 
 const REPUTATION_SCORE_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_reputation_score",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Aggregate reputation score (0-10000 basis points)",
   fields: [
     { name: "score",      type: "uint256" },
@@ -115,7 +115,7 @@ const REPUTATION_SCORE_TEMPLATE: SchemaTemplate = {
 
 const EMPLOYMENT_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_employment",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Employment record (employer + role + dates)",
   fields: [
     { name: "employer",    type: "string" },
@@ -128,7 +128,7 @@ const EMPLOYMENT_TEMPLATE: SchemaTemplate = {
 
 const DEGREE_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_degree",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Academic degree",
   fields: [
     { name: "institution",    type: "string" },
@@ -140,7 +140,7 @@ const DEGREE_TEMPLATE: SchemaTemplate = {
 
 const SOCIAL_ACCOUNT_TEMPLATE: SchemaTemplate = {
   name:        "arcpass_social_account",
-  version:     "1.0.0",
+  version:     "3.0.0",
   description: "Social account link (no PII on-chain)",
   fields: [
     { name: "platform",   type: "string" },

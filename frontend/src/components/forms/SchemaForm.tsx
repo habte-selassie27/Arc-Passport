@@ -22,7 +22,7 @@ function emptyField(): SchemaField {
 
 export function SchemaForm() {
   const [name, setName] = useState("");
-  const [version, setVersion] = useState("1.0.0");
+  const [version, setVersion] = useState("3.0.0");
   const [fields, setFields] = useState<SchemaField[]>([
     { name: "level", type: "uint8" },
     { name: "country", type: "string" },

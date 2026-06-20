@@ -6,6 +6,14 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api",
+      "destination": "/_svc/backend/index"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/_svc/backend/index/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

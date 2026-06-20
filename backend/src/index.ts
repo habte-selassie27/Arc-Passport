@@ -23,6 +23,8 @@ import socialRoutesV1 from "./routes/v1/social.js";
 import customRoutesV1 from "./routes/v1/custom.js";
 import passportRoutesV1 from "./routes/v1/passport.js";
 import bulkRoutesV1 from "./routes/v1/bulk.js";
+import analyticsRoutesV1 from "./routes/v1/analytics.js";
+import settingsRoutesV1 from "./routes/v1/settings.js";
 import openapiRoutesV1 from "./routes/v1/openapi.js";
 
 const app = express();
@@ -78,6 +80,8 @@ app.use("/v1/social", v1WriteLimiter, socialRoutesV1);
 app.use("/v1/custom", v1WriteLimiter, customRoutesV1);
 app.use("/v1/passport", passportRoutesV1);
 app.use("/v1/bulk", bulkRoutesV1);
+app.use("/v1/analytics", analyticsRoutesV1);
+app.use("/v1/settings", settingsRoutesV1);
 app.use("/v1", openapiRoutesV1);
 
 app.use(errorHandler);

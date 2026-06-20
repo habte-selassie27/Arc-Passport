@@ -164,6 +164,20 @@ export function stopBalancePolling() {
   }
 }
 
+export function getEventAnalytics() {
+  const now = Date.now();
+  const oneMinuteAgo = now - 60_000;
+  const oneHourAgo = now - 3_600_000;
+
+  const counts: Record<string, { lastMinute: number; lastHour: number; total: number }> = {};
+  for (const [event, timestamps] of Object.entries(eventBuckets)) {
+    const lastMinute = timestamps.filter((t) => t >= oneMinuteAgo).length;
+    const lastHour = timestamps.filter((t) => t >= oneHourAgo).length;
+    counts[event] = { lastMinute, lastHour, total: timestamps.length };
+  }
+  return counts;
+}
+
 /**
  * Starts live event watchers for RoleGranted and SchemaRegistered events.
  * ClaimIssued and ClaimRevoked are handled by claimIndexer.ts (which calls

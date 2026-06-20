@@ -24,7 +24,7 @@ function finalize(s: SchemaDefinition): SchemaDefinition {
 export const IDENTITY_SCHEMAS = {
   BASIC_IDENTITY: finalize({
     name: "arcpass_identity",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "displayName", type: "string" },
       { name: "avatarCid", type: "string" },
@@ -33,7 +33,7 @@ export const IDENTITY_SCHEMAS = {
   }),
   LIVENESS_VERIFIED: finalize({
     name: "arcpass_liveness",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "verified", type: "bool" },
       { name: "provider", type: "string" },
@@ -47,7 +47,7 @@ export const IDENTITY_SCHEMAS = {
 export const KYC_SCHEMAS = {
   KYC_BASIC: finalize({
     name: "arcpass_kyc_basic",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "level", type: "uint8" },
       { name: "country", type: "string" },
@@ -57,7 +57,7 @@ export const KYC_SCHEMAS = {
   }),
   AML_SCREENING: finalize({
     name: "arcpass_aml_screening",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "passed", type: "bool" },
       { name: "provider", type: "string" },
@@ -66,7 +66,7 @@ export const KYC_SCHEMAS = {
   }),
   ACCREDITED_INVESTOR: finalize({
     name: "arcpass_accredited_investor",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "jurisdiction", type: "string" },
       { name: "validUntil", type: "uint64" },
@@ -75,7 +75,7 @@ export const KYC_SCHEMAS = {
   }),
   AGE_OVER_18: finalize({
     name: "arcpass_age_over18",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "over18", type: "bool" },
       { name: "checkedAt", type: "uint64" },
@@ -89,7 +89,7 @@ export const KYC_SCHEMAS = {
 export const CREDENTIAL_SCHEMAS = {
   CERTIFICATION: finalize({
     name: "arcpass_certification",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "certName", type: "string" },
       { name: "issuingBody", type: "string" },
@@ -100,7 +100,7 @@ export const CREDENTIAL_SCHEMAS = {
   }),
   LICENSE: finalize({
     name: "arcpass_license",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "licenseType", type: "string" },
       { name: "licenseNumber", type: "string" },
@@ -111,7 +111,7 @@ export const CREDENTIAL_SCHEMAS = {
   }),
   SKILL_ENDORSEMENT: finalize({
     name: "arcpass_skill",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "skill", type: "string" },
       { name: "level", type: "uint8" },
@@ -125,7 +125,7 @@ export const CREDENTIAL_SCHEMAS = {
 export const DAO_SCHEMAS = {
   DAO_MEMBERSHIP: finalize({
     name: "arcpass_dao_membership",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "daoName", type: "string" },
       { name: "daoAddress", type: "address" },
@@ -136,7 +136,7 @@ export const DAO_SCHEMAS = {
   }),
   GOVERNANCE_PARTICIPATION: finalize({
     name: "arcpass_governance_participation",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "daoAddress", type: "address" },
       { name: "proposalsPassed", type: "uint32" },
@@ -147,7 +147,7 @@ export const DAO_SCHEMAS = {
   }),
   DELEGATE: finalize({
     name: "arcpass_delegate",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "daoAddress", type: "address" },
       { name: "delegatedFrom", type: "address[]" },
@@ -161,7 +161,7 @@ export const DAO_SCHEMAS = {
 export const REPUTATION_SCHEMAS = {
   REPUTATION_SCORE: finalize({
     name: "arcpass_reputation_score",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "score", type: "uint256" },
       { name: "domain", type: "string" },
@@ -171,7 +171,7 @@ export const REPUTATION_SCHEMAS = {
   }),
   POSITIVE_INTERACTION: finalize({
     name: "arcpass_positive_interaction",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "context", type: "string" },
       { name: "counterparty", type: "address" },
@@ -181,7 +181,7 @@ export const REPUTATION_SCHEMAS = {
   }),
   DISPUTE_RECORD: finalize({
     name: "arcpass_dispute_record",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "type", type: "string" },
       { name: "reportedBy", type: "address" },
@@ -196,7 +196,7 @@ export const REPUTATION_SCHEMAS = {
 export const EMPLOYMENT_SCHEMAS = {
   EMPLOYMENT_RECORD: finalize({
     name: "arcpass_employment",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "employer", type: "string" },
       { name: "role", type: "string" },
@@ -207,7 +207,7 @@ export const EMPLOYMENT_SCHEMAS = {
   }),
   INCOME_BAND: finalize({
     name: "arcpass_income_band",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "currency", type: "string" },
       { name: "bandMin", type: "uint256" },
@@ -218,7 +218,7 @@ export const EMPLOYMENT_SCHEMAS = {
   }),
   CONTRACTOR_RECORD: finalize({
     name: "arcpass_contractor",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "platform", type: "string" },
       { name: "completedJobs", type: "uint32" },
@@ -234,7 +234,7 @@ export const EMPLOYMENT_SCHEMAS = {
 export const EDUCATION_SCHEMAS = {
   DEGREE: finalize({
     name: "arcpass_degree",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "institution", type: "string" },
       { name: "degree", type: "string" },
@@ -245,7 +245,7 @@ export const EDUCATION_SCHEMAS = {
   }),
   COURSE_COMPLETION: finalize({
     name: "arcpass_course",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "courseName", type: "string" },
       { name: "provider", type: "string" },
@@ -256,7 +256,7 @@ export const EDUCATION_SCHEMAS = {
   }),
   BOOTCAMP_GRADUATE: finalize({
     name: "arcpass_bootcamp",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "bootcamp", type: "string" },
       { name: "track", type: "string" },
@@ -271,7 +271,7 @@ export const EDUCATION_SCHEMAS = {
 export const SOCIAL_SCHEMAS = {
   SOCIAL_ACCOUNT: finalize({
     name: "arcpass_social_account",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "platform", type: "string" },
       { name: "handle", type: "string" },
@@ -281,7 +281,7 @@ export const SOCIAL_SCHEMAS = {
   }),
   HUMANITY_PROOF: finalize({
     name: "arcpass_humanity",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "verified", type: "bool" },
       { name: "mechanism", type: "string" },
@@ -291,7 +291,7 @@ export const SOCIAL_SCHEMAS = {
   }),
   FOLLOWER_MILESTONE: finalize({
     name: "arcpass_follower_milestone",
-    version: "1.0.0",
+    version: "3.0.0",
     fields: [
       { name: "platform", type: "string" },
       { name: "followerCount", type: "uint32" },

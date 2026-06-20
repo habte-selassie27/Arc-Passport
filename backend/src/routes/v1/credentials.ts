@@ -1,9 +1,11 @@
 import { Router, Request, Response } from "express";
 import { CredentialAttestationService } from "../../services/attestation/credentials/CredentialAttestationService.js";
+import { getPassport } from "../../services/passportService.js";
 import { requireSignedNonce } from "../../middleware/auth.js";
 import { validateBody } from "../../utils/validate.js";
 import { asAddress } from "../../utils/address.js";
 import { CertifyBody, LicenseBody, EndorseBody } from "../../openapi/schemas.js";
+import { waitForIndexerReady } from "../../indexer/claimIndexer.js";
 
 const router = Router();
 const credentials = new CredentialAttestationService();
@@ -46,7 +48,14 @@ router.post("/endorse", requireSignedNonce, validateBody(EndorseBody), async (re
 
 router.get("/:address", async (req: Request, res: Response) => {
   try {
-    res.json({ success: true, data: { address: req.params.address, service: "credentials" } });
+    await waitForIndexerReady();
+    const address = req.params.address as `0x${string}`;
+    const passport = await getPassport(address);
+    const svc = passport.services.credentials;
+    res.json({
+      success: true,
+      data: { address, service: "credentials", verified: svc.verified, claimCount: svc.claimCount, claims: svc.claims },
+    });
   } catch (err: unknown) {
     res.status(500).json({ success: false, error: { code: "FETCH_ERROR", message: (err as Error).message } });
   }

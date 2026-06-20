@@ -15,3 +15,5 @@ foundry.toml.local
 coverage/
 lcov.info
 .vercel
+.indexer-state.json
+recovery/

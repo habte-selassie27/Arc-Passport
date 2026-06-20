@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useAccount, useSignMessage } from "wagmi";
 import { apiUrl } from "../../config/api";
 
 type ServiceKey = "identity" | "kyc" | "credentials" | "dao" | "reputation" | "employment" | "education" | "social" | "custom";
@@ -67,6 +68,8 @@ function parsePreview(csv: string): { headers: string[]; rows: string[][]; error
 }
 
 export function BulkIssue() {
+  const { address } = useAccount();
+  const { signMessageAsync } = useSignMessage();
   const [service, setService]   = useState<ServiceKey>("identity");
   const [csv, setCsv]           = useState("");
   const [mode, setMode]         = useState<"batch" | "perItem">("perItem");
@@ -85,15 +88,20 @@ export function BulkIssue() {
   };
 
   const submit = async () => {
+    if (!address) { setError("Connect your wallet first"); return; }
     setSubmit(true); setError(null); setResponse(null);
     try {
+      const nonce = String(Date.now());
+      const message = `ArcPass bulk:POST /v1/bulk/csv:${nonce}`;
+      const signature = await signMessageAsync({ message });
+
       const res = await fetch(apiUrl("/v1/bulk/csv"), {
         method:  "POST",
         headers: {
           "Content-Type":     "application/json",
-          "x-wallet-address": "",
-          "x-signature":      "",
-          "x-nonce":          String(Date.now()),
+          "x-wallet-address": address,
+          "x-signature":      signature,
+          "x-nonce":          nonce,
         },
         body: JSON.stringify({ service, csv, mode }),
       });
@@ -289,10 +297,10 @@ export function BulkIssue() {
         <button
           type="button"
           onClick={submit}
-          disabled={submitting || preview.rows.length === 0}
+          disabled={submitting || preview.rows.length === 0 || !address}
           className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium text-sm transition-colors"
         >
-          {submitting ? "Submitting…" : `Submit ${preview.rows.length} row${preview.rows.length === 1 ? "" : "s"}`}
+          {!address ? "Connect wallet" : submitting ? "Submitting…" : `Submit ${preview.rows.length} row${preview.rows.length === 1 ? "" : "s"}`}
         </button>
       </div>
     </div>

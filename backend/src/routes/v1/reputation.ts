@@ -1,9 +1,11 @@
 import { Router, Request, Response } from "express";
 import { ReputationAttestationService } from "../../services/attestation/reputation/ReputationAttestationService.js";
+import { getPassport } from "../../services/passportService.js";
 import { requireSignedNonce } from "../../middleware/auth.js";
 import { validateBody } from "../../utils/validate.js";
 import { asAddress } from "../../utils/address.js";
 import { RecordReputationBody, InteractionBody, DisputeBody } from "../../openapi/schemas.js";
+import { waitForIndexerReady } from "../../indexer/claimIndexer.js";
 
 const router = Router();
 const reputation = new ReputationAttestationService();
@@ -46,7 +48,14 @@ router.post("/dispute", requireSignedNonce, validateBody(DisputeBody), async (re
 
 router.get("/score/:address", async (req: Request, res: Response) => {
   try {
-    res.json({ success: true, data: { address: req.params.address, service: "reputation" } });
+    await waitForIndexerReady();
+    const address = req.params.address as `0x${string}`;
+    const passport = await getPassport(address);
+    const svc = passport.services.reputation;
+    res.json({
+      success: true,
+      data: { address, service: "reputation", verified: svc.verified, claimCount: svc.claimCount, claims: svc.claims },
+    });
   } catch (err: unknown) {
     res.status(500).json({ success: false, error: { code: "FETCH_ERROR", message: (err as Error).message } });
   }
@@ -54,7 +63,14 @@ router.get("/score/:address", async (req: Request, res: Response) => {
 
 router.get("/history/:address", async (req: Request, res: Response) => {
   try {
-    res.json({ success: true, data: { address: req.params.address, service: "reputation", history: [] } });
+    await waitForIndexerReady();
+    const address = req.params.address as `0x${string}`;
+    const passport = await getPassport(address);
+    const svc = passport.services.reputation;
+    res.json({
+      success: true,
+      data: { address, service: "reputation", verified: svc.verified, claimCount: svc.claimCount, claims: svc.claims, history: svc.claims },
+    });
   } catch (err: unknown) {
     res.status(500).json({ success: false, error: { code: "FETCH_ERROR", message: (err as Error).message } });
   }

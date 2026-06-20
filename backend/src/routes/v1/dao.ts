@@ -1,9 +1,11 @@
 import { Router, Request, Response } from "express";
 import { DaoAttestationService } from "../../services/attestation/dao/DaoAttestationService.js";
+import { getPassport } from "../../services/passportService.js";
 import { requireSignedNonce } from "../../middleware/auth.js";
 import { validateBody } from "../../utils/validate.js";
 import { asAddress } from "../../utils/address.js";
 import { EnrollBody, ParticipationBody, DelegateBody } from "../../openapi/schemas.js";
+import { waitForIndexerReady } from "../../indexer/claimIndexer.js";
 
 const router = Router();
 const dao = new DaoAttestationService();
@@ -46,7 +48,14 @@ router.post("/delegate", requireSignedNonce, validateBody(DelegateBody), async (
 
 router.get("/member/:address", async (req: Request, res: Response) => {
   try {
-    res.json({ success: true, data: { address: req.params.address, service: "dao" } });
+    await waitForIndexerReady();
+    const address = req.params.address as `0x${string}`;
+    const passport = await getPassport(address);
+    const svc = passport.services.dao;
+    res.json({
+      success: true,
+      data: { address, service: "dao", verified: svc.verified, claimCount: svc.claimCount, claims: svc.claims },
+    });
   } catch (err: unknown) {
     res.status(500).json({ success: false, error: { code: "FETCH_ERROR", message: (err as Error).message } });
   }

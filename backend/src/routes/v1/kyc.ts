@@ -1,9 +1,11 @@
 import { Router, Request, Response } from "express";
 import { KycAttestationService } from "../../services/attestation/kyc/KycAttestationService.js";
+import { getPassport } from "../../services/passportService.js";
 import { requireSignedNonce } from "../../middleware/auth.js";
 import { validateBody } from "../../utils/validate.js";
 import { asAddress } from "../../utils/address.js";
 import { BasicKycBody, AmlBody, AccreditedBody, AgeGateBody } from "../../openapi/schemas.js";
+import { waitForIndexerReady } from "../../indexer/claimIndexer.js";
 
 const router = Router();
 const kyc = new KycAttestationService();
@@ -54,7 +56,20 @@ router.post("/age-gate", requireSignedNonce, validateBody(AgeGateBody), async (r
 
 router.get("/status/:address", async (req: Request, res: Response) => {
   try {
-    res.json({ success: true, data: { address: req.params.address, service: "kyc" } });
+    await waitForIndexerReady();
+    const address = req.params.address as `0x${string}`;
+    const passport = await getPassport(address);
+    const kycService = passport.services.kyc;
+    res.json({
+      success: true,
+      data: {
+        address,
+        service: "kyc",
+        verified: kycService.verified,
+        claimCount: kycService.claimCount,
+        claims: kycService.claims,
+      },
+    });
   } catch (err: unknown) {
     res.status(500).json({ success: false, error: { code: "FETCH_ERROR", message: (err as Error).message } });
   }

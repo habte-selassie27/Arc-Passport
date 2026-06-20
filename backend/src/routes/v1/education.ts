@@ -1,9 +1,11 @@
 import { Router, Request, Response } from "express";
 import { EducationAttestationService } from "../../services/attestation/education/EducationAttestationService.js";
+import { getPassport } from "../../services/passportService.js";
 import { requireSignedNonce } from "../../middleware/auth.js";
 import { validateBody } from "../../utils/validate.js";
 import { asAddress } from "../../utils/address.js";
 import { DegreeBody, CourseBody, BootcampBody } from "../../openapi/schemas.js";
+import { waitForIndexerReady } from "../../indexer/claimIndexer.js";
 
 const router = Router();
 const education = new EducationAttestationService();
@@ -46,7 +48,14 @@ router.post("/bootcamp", requireSignedNonce, validateBody(BootcampBody), async (
 
 router.get("/:address", async (req: Request, res: Response) => {
   try {
-    res.json({ success: true, data: { address: req.params.address, service: "education" } });
+    await waitForIndexerReady();
+    const address = req.params.address as `0x${string}`;
+    const passport = await getPassport(address);
+    const svc = passport.services.education;
+    res.json({
+      success: true,
+      data: { address, service: "education", verified: svc.verified, claimCount: svc.claimCount, claims: svc.claims },
+    });
   } catch (err: unknown) {
     res.status(500).json({ success: false, error: { code: "FETCH_ERROR", message: (err as Error).message } });
   }

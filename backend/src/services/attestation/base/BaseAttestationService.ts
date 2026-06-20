@@ -184,10 +184,14 @@ export abstract class BaseAttestationService {
     const circleClient = getCircleClient();
     const tx = await circleClient.createContractExecutionTransaction({
       walletId:             this.walletId,
+      blockchain:           (process.env.ARC_BLOCKCHAIN_ENV || "ARC-TESTNET") as "ARC-TESTNET",
       contractAddress:      ADDRESSES.attestationRegistry!,
       abiFunctionSignature: abiFn,
       abiParameters:        params as string[],
       fee:                  { type: "level", config: { feeLevel: "MEDIUM" } },
+    } as any).catch((err: any) => {
+      console.error(`[Circle] ${abiFn} failed:`, err.response?.data || err.message);
+      throw err;
     });
     const txId = tx.data?.id;
     if (!txId) throw Errors.TransactionFailed(abiFn, "No transaction ID returned");
