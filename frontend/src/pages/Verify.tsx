@@ -1,9 +1,14 @@
 import { VerifyForm } from "../components/forms/VerifyForm";
+import { PageHeader } from "../components/ui/PageHeader";
 
 export function VerifyPage() {
   return (
-    <div className="max-w-lg mx-auto py-12 px-4 animate-fade-in">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">Verify Credential</h1>
+    <div style={{ maxWidth: 560, margin: "0 auto" }}>
+      <PageHeader
+        eyebrow="On-chain verification"
+        title="Verify Credential"
+        description="Check whether a wallet holds a valid attestation on-chain. Calls PassportVerifier.verify() directly — trustless, no backend required."
+      />
       <VerifyForm />
     </div>
   );

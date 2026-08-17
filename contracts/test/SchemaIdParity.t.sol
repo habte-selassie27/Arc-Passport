@@ -6,20 +6,16 @@ import { SchemaRegistry }    from "../src/core/SchemaRegistry.sol";
 import { AttestationRegistry } from "../src/core/AttestationRegistry.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import { BASIC_IDENTITY_ID, LIVENESS_VERIFIED_ID }        from "../src/services/schemas/IdentitySchemas.sol";
-import { CERTIFICATION_ID, LICENSE_ID, SKILL_ENDORSEMENT_ID } from "../src/services/schemas/CredentialSchemas.sol";
-import { KYC_BASIC_ID, AML_SCREENING_ID, ACCREDITED_INVESTOR_ID, AGE_OVER_18_ID }
-                                                        from "../src/services/schemas/KycSchemas.sol";
-import { DAO_MEMBERSHIP_ID, GOVERNANCE_PARTICIPATION_ID, DELEGATE_ID }
-                                                        from "../src/services/schemas/DaoSchemas.sol";
-import { REPUTATION_SCORE_ID, POSITIVE_INTERACTION_ID, DISPUTE_RECORD_ID }
-                                                        from "../src/services/schemas/ReputationSchemas.sol";
-import { EMPLOYMENT_RECORD_ID, INCOME_BAND_ID, CONTRACTOR_RECORD_ID }
-                                                        from "../src/services/schemas/EmploymentSchemas.sol";
-import { DEGREE_ID, COURSE_COMPLETION_ID, BOOTCAMP_GRADUATE_ID }
-                                                        from "../src/services/schemas/EducationSchemas.sol";
-import { SOCIAL_ACCOUNT_ID, HUMANITY_PROOF_ID, FOLLOWER_MILESTONE_ID }
-                                                        from "../src/services/schemas/SocialSchemas.sol";
+import {
+    BASIC_IDENTITY_ID, LIVENESS_VERIFIED_ID,
+    KYC_BASIC_ID, AML_SCREENING_ID, ACCREDITED_INVESTOR_ID, AGE_OVER_18_ID,
+    CERTIFICATION_ID, LICENSE_ID, SKILL_ENDORSEMENT_ID,
+    DAO_MEMBERSHIP_ID, GOVERNANCE_PARTICIPATION_ID, DELEGATE_ID,
+    REPUTATION_SCORE_ID, POSITIVE_INTERACTION_ID, DISPUTE_RECORD_ID,
+    EMPLOYMENT_RECORD_ID, INCOME_BAND_ID, CONTRACTOR_RECORD_ID,
+    DEGREE_ID, COURSE_COMPLETION_ID, BOOTCAMP_GRADUATE_ID,
+    SOCIAL_ACCOUNT_ID, HUMANITY_PROOF_ID, FOLLOWER_MILESTONE_ID
+} from "../src/services/schemas/SchemaIds.sol";
 
 /// @title SchemaIdParityTest
 /// @notice CRITICAL: Verifies every onchain schemaId constant matches the value

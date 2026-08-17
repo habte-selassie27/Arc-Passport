@@ -6,68 +6,67 @@ import { IssueDashboard } from "../../components/studio/IssueDashboard";
 import { BulkIssue } from "../../components/studio/BulkIssue";
 import { RevokeDashboard } from "../../components/studio/RevokeDashboard";
 import { Settings } from "../../components/studio/Settings";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { Button } from "../../components/ui/Button";
 import { API_BASE_URL } from "../../config/api";
 
 const STUDIO_LINKS = [
-  { to: "/studio",              label: "Overview",  exact: true },
-  { to: "/studio/schemas",      label: "Schemas"    },
-  { to: "/studio/templates",    label: "Templates"  },
-  { to: "/studio/issue",        label: "Issue"      },
-  { to: "/studio/bulk",         label: "Bulk Issue" },
-  { to: "/studio/revoke",       label: "Revoke"     },
-  { to: "/studio/analytics",    label: "Analytics"  },
-  { to: "/studio/settings",     label: "Settings"   },
+  { to: "/studio", label: "Overview", exact: true },
+  { to: "/studio/schemas", label: "Schemas" },
+  { to: "/studio/templates", label: "Templates" },
+  { to: "/studio/issue", label: "Issue" },
+  { to: "/studio/bulk", label: "Bulk Issue" },
+  { to: "/studio/revoke", label: "Revoke" },
+  { to: "/studio/analytics", label: "Analytics" },
+  { to: "/studio/settings", label: "Settings" },
 ];
 
 function StudioNav() {
   const { pathname } = useLocation();
   return (
-    <nav className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700 pb-2 overflow-x-auto">
-      {STUDIO_LINKS.map(({ to, label, exact }) => (
-        <Link
-          key={to}
-          to={to}
-          className={`text-xs whitespace-nowrap px-3 py-2 rounded-t-lg border-b-2 -mb-[2px] transition-colors ${
-            (exact ? pathname === to : pathname.startsWith(to))
-              ? "text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400 font-semibold"
-              : "text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          {label}
-        </Link>
-      ))}
+    <nav className="studio-tabs" role="tablist" aria-label="Studio sections" style={{ marginBottom: "var(--space-6)" }}>
+      {STUDIO_LINKS.map(({ to, label, exact }) => {
+        const active = exact ? pathname === to : pathname.startsWith(to);
+        return (
+          <Link
+            key={to}
+            to={to}
+            role="tab"
+            aria-selected={active}
+            aria-current={active ? "page" : undefined}
+            className="studio-tab"
+            style={{ textDecoration: "none" }}
+          >
+            {label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
 
 export function StudioPage() {
   return (
-    <div className="py-12 px-4 animate-fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ArcPass Studio</h1>
-        <div className="flex items-center gap-3 text-xs">
-          <a
-            href={`${API_BASE_URL}/v1/docs`}
-            target="_blank"
-            rel="noreferrer"
-            className="px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium"
-          >
-            API Docs (Swagger)
+    <div className="animate-page" style={{ maxWidth: 960, margin: "0 auto" }}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PageHeader
+          eyebrow="ArcPass Studio"
+          title="Issuer Studio"
+          description="Manage schemas, issue attestations, and monitor analytics across all 9 service verticals."
+          align="left"
+        />
+        <div className="flex gap-2">
+          <a href={`${API_BASE_URL}/v1/docs`} target="_blank" rel="noreferrer">
+            <Button variant="ghost" size="sm">API Docs (Swagger)</Button>
           </a>
-          <a
-            href={`${API_BASE_URL}/v1/openapi.json`}
-            target="_blank"
-            rel="noreferrer"
-            className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-medium"
-          >
-            openapi.json
+          <a href={`${API_BASE_URL}/v1/openapi.json`} target="_blank" rel="noreferrer">
+            <Button variant="ghost" size="sm">openapi.json</Button>
           </a>
         </div>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-        Issuer dashboard for managing schemas, issuing attestations, and monitoring analytics across all 9 service verticals.
-      </p>
+
       <StudioNav />
+
       <Routes>
         <Route index element={<AnalyticsDashboard />} />
         <Route path="schemas" element={<SchemaBuilder />} />

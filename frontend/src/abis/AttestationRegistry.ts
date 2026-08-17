@@ -76,4 +76,71 @@ export const ATTESTATION_REGISTRY_ABI = [
     outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
     stateMutability: "view",
   },
+  {
+    type: "error",
+    name: "ArcPass__NotIssuer",
+    inputs: [{ name: "caller", type: "address", internalType: "address" }],
+  },
+  {
+    type: "error",
+    name: "ArcPass__NotRevoker",
+    inputs: [{ name: "caller", type: "address", internalType: "address" }],
+  },
+  {
+    type: "error",
+    name: "ArcPass__ClaimNotFound",
+    inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "ArcPass__ClaimAlreadyRevoked",
+    inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "ArcPass__ActiveClaimExists",
+    inputs: [
+      { name: "subject", type: "address", internalType: "address" },
+      { name: "schemaId", type: "bytes32", internalType: "bytes32" },
+      { name: "issuer", type: "address", internalType: "address" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ArcPass__ClaimExpired",
+    inputs: [
+      { name: "claimId", type: "bytes32", internalType: "bytes32" },
+      { name: "expiredAt", type: "uint256", internalType: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ArcPass__InvalidSubject",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ArcPass__InvalidSchemaId",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ArcPass__ZeroAddress",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ArcPass__InvalidBatchSize",
+    inputs: [{ name: "size", type: "uint256", internalType: "uint256" }],
+  },
+  {
+    type: "error",
+    name: "ArcPass__EmptyData",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ArcPass__InvalidExpiry",
+    inputs: [],
+  },
 ] as const;

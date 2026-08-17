@@ -1,10 +1,19 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { usePassport } from "../hooks/usePassport";
 import { PassportCard } from "../components/passport/PassportCard";
-import { CardSkeleton } from "../components/shared/LoadingSkeleton";
+import { CardSkeleton } from "../components/ui/Skeleton";
 import { PassportErrorBoundary } from "../components/shared/PassportErrorBoundary";
+import { NotificationsCard } from "../components/shared/NotificationsCard";
+import { RequestCredentialForm } from "../components/forms/RequestCredentialForm";
 import { useWallet } from "../contexts/WalletContext";
 import { API_BASE_URL } from "../config/api";
+import { PageHeader } from "../components/ui/PageHeader";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Input } from "../components/ui/Input";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
 
 export function PassportPage() {
   const { address: paramAddress } = useParams<{ address: string }>();
@@ -15,55 +24,87 @@ export function PassportPage() {
 
   if (!targetAddress) {
     return (
-      <div className="text-center py-16 animate-fade-in">
-        <p className="text-gray-600 dark:text-gray-400 mb-4">Connect your wallet or provide an address to view a passport.</p>
-        <div className="flex justify-center">
-          <input
-            type="text"
-            placeholder="0x... enter an address"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.target as HTMLInputElement).value.startsWith("0x")) {
-                navigate(`/passport/${(e.target as HTMLInputElement).value}`);
-              }
-            }}
-            className="w-80 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
-          />
-        </div>
+      <div style={{ maxWidth: 560, margin: "0 auto" }}>
+        <PageHeader
+          eyebrow="Public passport"
+          title="View a Passport"
+          description="Enter any Arc wallet address to view its public passport — credentials, issuers, and verification status. No wallet required."
+        />
+        <AddressEntry onNavigate={(addr) => navigate(`/passport/${addr}`)} />
       </div>
     );
   }
 
   return (
-    <div className="py-12 px-4 animate-fade-in">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
-        Passport for {targetAddress.slice(0, 6)}...{targetAddress.slice(-4)}
-      </h1>
-      <PassportErrorBoundary>
-        {isLoading && <CardSkeleton />}
+    <div className="animate-page">
+      <PageHeader
+        eyebrow="Public passport"
+        title={`${targetAddress.slice(0, 6)}...${targetAddress.slice(-4)}`}
+        description="Shareable public passport. Anyone can inspect credentials and verify them on-chain."
+        align="left"
+      />
 
+      <PassportErrorBoundary>
+        {/* Slim, non-blocking backend-offline banner — never dominates the page */}
         {error && (
-          <div className="text-center max-w-md mx-auto">
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
-              <p className="text-red-700 dark:text-red-300 font-medium mb-2">Could not load passport</p>
-              <p className="text-xs text-red-600 dark:text-red-400 mb-4 font-mono break-all">
-                {(error as Error).message}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                The passport API at <code className="bg-red-100 dark:bg-red-900/40 px-1 rounded">{API_BASE_URL}</code> may be offline.
-                Start the backend with <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">npm run dev</code> in the <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">backend/</code> directory.
-              </p>
-              <button
-                onClick={() => refetch()}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm font-medium transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
+          <ErrorBanner onRetry={() => void refetch()}>
+            Passport data unavailable — backend offline.{" "}
+            <span className="c-subtle">({API_BASE_URL})</span> On-chain reads still work.
+          </ErrorBanner>
         )}
 
-        {passport && <PassportCard passport={passport} />}
+        {isLoading && <CardSkeleton />}
+
+        {!isLoading && !error && passport && <PassportCard passport={passport} />}
+
+        {!isLoading && !error && !passport && (
+          <Card>
+            <EmptyState
+              title="No passport data"
+              body={`No indexed passport found for this address yet. Try again shortly, or verify credentials directly on-chain.`}
+            />
+          </Card>
+        )}
+
+        {/* Own-passport extras: notifications + credential requests (wallet required). */}
+        {connectedAddress &&
+          targetAddress &&
+          connectedAddress.toLowerCase() === targetAddress.toLowerCase() && (
+            <div className="section" style={{ marginTop: "var(--space-12)" }}>
+              <NotificationsCard address={connectedAddress as `0x${string}`} />
+              <div style={{ marginTop: "var(--space-6)" }}>
+                <RequestCredentialForm address={connectedAddress as `0x${string}`} />
+              </div>
+            </div>
+          )}
       </PassportErrorBoundary>
     </div>
+  );
+}
+
+function AddressEntry({ onNavigate }: { onNavigate: (address: string) => void }) {
+  const [value, setValue] = useState("");
+  const valid = value.startsWith("0x");
+
+  return (
+    <form
+      className="flex gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valid) onNavigate(value);
+      }}
+    >
+      <Input
+        mono
+        type="text"
+        placeholder="0x... enter an address"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        aria-label="Wallet address"
+      />
+      <Button type="submit" disabled={!valid}>
+        View
+      </Button>
+    </form>
   );
 }

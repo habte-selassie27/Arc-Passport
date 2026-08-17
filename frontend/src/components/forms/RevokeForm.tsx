@@ -4,9 +4,11 @@ import { ADDRESSES } from "../../config/addresses";
 import { ATTESTATION_REGISTRY_ABI } from "../../abis/AttestationRegistry";
 import { TxStatus } from "../shared/TxStatus";
 import { TransactionPreview } from "../shared/TransactionPreview";
-import { GasEstimate } from "../shared/GasEstimate";
 import { parseContractError } from "../../utils/parseContractError";
 import { toast } from "../shared/Toast";
+import { Field } from "../ui/Field";
+import { Input } from "../ui/Input";
+import { Button } from "../ui/Button";
 
 export function RevokeForm() {
   const [claimId, setClaimId] = useState("");
@@ -40,19 +42,18 @@ export function RevokeForm() {
   }, [writeContract, claimId]);
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-w-md mx-auto">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Revoke Claim</h2>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Claim ID</label>
-        <input
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Field label="Claim ID" htmlFor="revoke-claim" helper="The on-chain claim ID (0x…). Requires REVOKER_ROLE.">
+        <Input
+          id="revoke-claim"
+          mono
           type="text"
           value={claimId}
           onChange={(e) => setClaimId(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-shadow"
           placeholder="0x..."
           required
         />
-      </div>
+      </Field>
 
       <TransactionPreview
         enabled={simEnabled}
@@ -64,24 +65,12 @@ export function RevokeForm() {
         onSimResult={handleSimResult}
       />
 
-      <GasEstimate
-        enabled={simEnabled}
-        address={ADDRESSES.attestationRegistry}
-        abi={ATTESTATION_REGISTRY_ABI}
-        functionName="revoke"
-        args={revokeArgs}
-      />
-
-      <button
-        type="submit"
-        disabled={isPending || !simEnabled}
-        className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 transition-all active:scale-[0.98] font-medium"
-      >
-        {isPending ? "Revoking..." : "Revoke Claim"}
-      </button>
+      <Button type="submit" block variant="danger" disabled={isPending || !simEnabled} loading={isPending}>
+        Revoke Claim
+      </Button>
 
       <TxStatus hash={hash} />
-      {error && <p className="text-red-600 dark:text-red-400 text-sm text-center">{parseContractError(error)}</p>}
+      {error && <p className="c-danger t-sm text-center">{parseContractError(error)}</p>}
     </form>
   );
 }

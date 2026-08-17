@@ -1,0 +1,143 @@
+/* ============================================================
+   Form inputs, selects, labels, helper/error text
+   ============================================================ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.field__helper {
+  font-size: var(--text-xs);
+  color: var(--color-subtle);
+}
+
+.field__error {
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+}
+
+.input {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-on-surface);
+  font-size: var(--text-base);
+  padding: 10px 14px;
+  width: 100%;
+  transition: border-color var(--duration-fast) var(--ease-out-quart),
+              box-shadow var(--duration-fast) var(--ease-out-quart);
+}
+
+.input::placeholder {
+  color: var(--color-subtle);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-arc-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.input--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.02em;
+}
+
+.input--valid {
+  border-color: rgba(0, 229, 160, 0.5);
+}
+
+.input--error {
+  border-color: var(--color-danger);
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.6;
+}
+
+/* Select — same base as input */
+.select {
+  appearance: none;
+  background-color: var(--color-surface-2);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-on-surface);
+  font-size: var(--text-sm);
+  padding: 10px 36px 10px 14px;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out-quart),
+              box-shadow var(--duration-fast) var(--ease-out-quart);
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--color-arc-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.select--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* Segmented control (e.g. bulk issue mode) */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface-0);
+}
+
+.segmented__option {
+  padding: 8px 16px;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  background: transparent;
+  border: none;
+  transition: background-color var(--duration-fast), color var(--duration-fast);
+}
+
+.segmented__option:hover:not(:disabled) {
+  color: var(--color-on-bright);
+  background: var(--color-surface-1);
+}
+
+.segmented__option[aria-checked="true"] {
+  background: var(--color-arc-primary);
+  color: #fff;
+}
+
+.segmented__option + .segmented__option {
+  border-left: 1px solid var(--color-border);
+}
+
+/* CSV upload label acting as a file button */
+.file-label {
+  font-size: var(--text-sm);
+  color: var(--color-arc-primary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.file-label:hover {
+  text-decoration: underline;
+}

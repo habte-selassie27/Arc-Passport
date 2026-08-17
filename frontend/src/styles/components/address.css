@@ -1,0 +1,43 @@
+/* ============================================================
+   Address display — structured data, not plain text
+   ============================================================ */
+
+.addr {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.addr:hover {
+  color: var(--color-arc-primary);
+}
+
+.addr__copy {
+  width: 14px;
+  height: 14px;
+  color: var(--color-subtle);
+  flex-shrink: 0;
+}
+
+.addr:hover .addr__copy {
+  color: var(--color-arc-primary);
+}
+
+/* Full (untruncated) addresses in data tables: subtle 0x prefix,
+   bright hex body — creates visual rhythm. */
+.addr--full .addr__prefix {
+  color: var(--color-subtle);
+}
+
+.addr--full .addr__hex {
+  color: var(--color-on-surface);
+}

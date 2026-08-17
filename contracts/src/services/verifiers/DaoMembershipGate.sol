@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { IPassportVerifier, VerificationResult } from "../../core/interfaces/IPassportVerifier.sol";
-import { DAO_MEMBERSHIP_ID } from "../schemas/DaoSchemas.sol";
+import { DAO_MEMBERSHIP_ID } from "../schemas/SchemaIds.sol";
 
 contract DaoMembershipGate {
     IPassportVerifier public immutable verifier;

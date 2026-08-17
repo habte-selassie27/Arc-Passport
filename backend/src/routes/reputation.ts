@@ -2,12 +2,22 @@ import { Router, Request, Response } from "express";
 import { getIdentity } from "../services/identityService.js";
 import { getReputationEvents, recordReputationEvent } from "../services/reputationService.js";
 import { requireSignedNonce } from "../middleware/auth.js";
+import { issuerGuard } from "../middleware/issuerGuard.js";
+import { isValidAddress } from "../utils/address.js";
 
 const router = Router();
 
 router.get("/:address", async (req: Request, res: Response) => {
   try {
-    const identity = await getIdentity(req.params.address as `0x${string}`);
+    const address = req.params.address;
+    if (!isValidAddress(address)) {
+      res.status(400).json({
+        success: false,
+        error: { code: "INVALID_ADDRESS", message: "Invalid Ethereum address" },
+      });
+      return;
+    }
+    const identity = await getIdentity(address as `0x${string}`);
     if (!identity) {
       res.json({ success: true, data: { reputation: [] } });
       return;
@@ -23,7 +33,7 @@ router.get("/:address", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/record", requireSignedNonce, async (req: Request, res: Response) => {
+router.post("/record", requireSignedNonce, issuerGuard, async (req: Request, res: Response) => {
   try {
     const { identityTokenId, eventType, metadataURI } = req.body;
     if (!identityTokenId || !eventType) {

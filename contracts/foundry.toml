@@ -18,3 +18,8 @@ invariant        = { runs = 1000, depth = 50 }
 
 [rpc_endpoints]
 arc_testnet      = "${ARC_RPC_URL}"
+
+# block.timestamp is intentional in expiry checks (AGENTS.md §6: strict expiry
+# `block.timestamp >= expiresAt` = expired) — suppress the lint warning for it.
+[lint]
+exclude_lints = ["block-timestamp"]

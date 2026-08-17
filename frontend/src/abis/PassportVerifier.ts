@@ -38,4 +38,43 @@ export const PASSPORT_VERIFIER_ABI = [
     ],
     stateMutability: "view",
   },
+  {
+    type: "error",
+    name: "ArcPass__InvalidMerkleProof",
+    inputs: [
+      { name: "claimId", type: "bytes32", internalType: "bytes32" },
+      { name: "fieldLeaf", type: "bytes32", internalType: "bytes32" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ArcPass__VerificationFailed",
+    inputs: [
+      { name: "subject", type: "address", internalType: "address" },
+      { name: "schemaId", type: "bytes32", internalType: "bytes32" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ArcPass__ClaimAlreadyRevoked",
+    inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "ArcPass__ClaimExpired",
+    inputs: [
+      { name: "claimId", type: "bytes32", internalType: "bytes32" },
+      { name: "expiredAt", type: "uint256", internalType: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ArcPass__InvalidSubject",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ArcPass__ZeroAddress",
+    inputs: [],
+  },
 ] as const;

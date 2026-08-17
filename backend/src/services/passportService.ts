@@ -74,23 +74,11 @@ const ERC721_ABI = [
 
 // Cache known address→tokenId mappings (identity lookups are expensive on Arc's non-standard ERC-721)
 const identityCache = new Map<string, { tokenId: number; metadataUri: string | null }>();
+const MAX_IDENTITY_CACHE = 1000;
 
 async function getIdentity(address: `0x${string}`): Promise<{ tokenId: number; metadataUri: string | null } | null> {
   const cached = identityCache.get(address.toLowerCase());
   if (cached) return cached;
-
-  // Known identities — skip RPC entirely. Remove before mainnet.
-  const KNOWN_IDENTITY: Record<string, { tokenId: number; metadataUri: string | null }> = {
-    "0x04e0353b7218b66d6803725ce7342e6e1225db1b": {
-      tokenId: 648069,
-      metadataUri: "ipfs://QmArcPassDeployer",
-    },
-  };
-  const known = KNOWN_IDENTITY[address.toLowerCase()];
-  if (known) {
-    identityCache.set(address.toLowerCase(), known);
-    return known;
-  }
 
   // Fallback: try getIdentity (standard ERC-8004)
   try {
@@ -103,14 +91,16 @@ async function getIdentity(address: `0x${string}`): Promise<{ tokenId: number; m
     const [tokenId, metadataUri] = result as readonly [bigint, string];
     const out = { tokenId: Number(tokenId), metadataUri: metadataUri ?? null };
     identityCache.set(address.toLowerCase(), out);
+    if (identityCache.size > MAX_IDENTITY_CACHE) {
+      const firstKey = identityCache.keys().next().value;
+      if (firstKey) identityCache.delete(firstKey);
+    }
     return out;
   } catch {
     // getIdentity reverts on Arc's implementation (calls owner as contract)
   }
 
   // Unknown address with no cached identity — return null (no on-chain identity found)
-  return null;
-
   return null;
 }
 
@@ -128,7 +118,10 @@ async function getReputationEvents(tokenId: number): Promise<ReputationEvent[]> 
   }
 }
 
-function buildServicesFromIndexedClaims(address: `0x${string}`): Record<ServiceKey, ServiceClaims> {
+function buildServicesFromIndexedClaims(
+  address: `0x${string}`,
+  validatedClaims?: ActiveClaim[]
+): Record<ServiceKey, ServiceClaims> {
   const indexedClaims = getClaimsBySubject(address);
 
   const out = {} as Record<ServiceKey, ServiceClaims>;
@@ -136,19 +129,30 @@ function buildServicesFromIndexedClaims(address: `0x${string}`): Record<ServiceK
     out[key] = { service: key, claims: [], verified: false, claimCount: 0 };
   }
 
+  // Build a lookup from validated claims if available
+  const validityMap = new Map<string, boolean>();
+  if (validatedClaims) {
+    for (const vc of validatedClaims) {
+      validityMap.set(vc.claimId.toLowerCase(), vc.valid);
+    }
+  }
+
   for (const c of indexedClaims) {
     const serviceKey = SCHEMA_SERVICE_MAP.get(c.schemaId.toLowerCase()) ?? "custom";
+    const valid = validityMap.has(c.claimId.toLowerCase())
+      ? validityMap.get(c.claimId.toLowerCase())!
+      : true; // fallback for claims not in validation batch
     out[serviceKey].claims.push({
       claimId:  c.claimId,
       schemaId: c.schemaId,
       issuer:   c.issuer,
-      valid:    true,
+      valid,
     });
   }
 
   for (const key of ALL_SERVICE_KEYS) {
     out[key].claimCount = out[key].claims.length;
-    out[key].verified = out[key].claims.length > 0;
+    out[key].verified = out[key].claims.some((c) => c.valid);
   }
 
   return out;
@@ -204,7 +208,7 @@ export async function getPassport(address: `0x${string}`): Promise<PassportDocum
   }));
   const claims = await withTimeout(batchValidateClaims(rawClaims), 8000, "batchValidate");
 
-  const services = buildServicesFromIndexedClaims(address);
+  const services = buildServicesFromIndexedClaims(address, claims);
 
   return {
     address:     address,

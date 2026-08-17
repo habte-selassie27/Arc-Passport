@@ -16,6 +16,22 @@ import { verifyMessage } from "viem";
  */
 const USED_NONCES = new Map<string, Set<string>>();
 
+/** Maximum nonces retained per address to prevent unbounded memory growth. */
+const MAX_NONCES_PER_ADDRESS = 10_000;
+
+/** When any address exceeds this limit, prune the oldest half. */
+const NONCE_PRUNE_THRESHOLD = MAX_NONCES_PER_ADDRESS;
+
+function pruneNonces(addressKey: string) {
+  const nonces = USED_NONCES.get(addressKey);
+  if (nonces && nonces.size > NONCE_PRUNE_THRESHOLD) {
+    const arr = Array.from(nonces);
+    // Remove the oldest half (insertion order == UUID timestamp order)
+    const keep = arr.slice(arr.length - Math.floor(MAX_NONCES_PER_ADDRESS / 2));
+    USED_NONCES.set(addressKey, new Set(keep));
+  }
+}
+
 export async function requireSignedNonce(
   req: Request,
   res: Response,
@@ -62,6 +78,7 @@ export async function requireSignedNonce(
 
   addressNonces.add(nonce);
   USED_NONCES.set(address.toLowerCase(), addressNonces);
+  pruneNonces(address.toLowerCase());
   req.verifiedAddress = address;
   next();
 }

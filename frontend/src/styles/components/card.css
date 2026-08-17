@@ -1,0 +1,55 @@
+/* ============================================================
+   Card — the base surface used everywhere
+   ============================================================ */
+
+.card {
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  transition:
+    border-color var(--duration-base) var(--ease-out-quart),
+    box-shadow var(--duration-base) var(--ease-out-quart);
+}
+
+.card:hover {
+  border-color: var(--color-border-glow);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.card--interactive {
+  cursor: pointer;
+}
+
+.card--interactive:hover {
+  transform: translateY(-1px);
+}
+
+.card--interactive:active {
+  transform: translateY(0);
+}
+
+/* Verified card — the signature green glow (confirmed on-chain only) */
+.card--verified {
+  border-color: rgba(0, 229, 160, 0.3);
+  box-shadow: var(--shadow-verified);
+}
+
+/* Revoked / invalid card — red border, no glow */
+.card--revoked {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.03);
+}
+
+.card__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-lg);
+  color: var(--color-on-bright);
+}
+
+.card__desc {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  line-height: 1.6;
+}

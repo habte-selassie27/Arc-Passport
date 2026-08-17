@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { IPassportVerifier, VerificationResult } from "../../core/interfaces/IPassportVerifier.sol";
-import { KYC_BASIC_ID } from "../schemas/KycSchemas.sol";
+import { KYC_BASIC_ID } from "../schemas/SchemaIds.sol";
 
 error ArcPass__KycNotVerified(address subject, uint8 requiredLevel);
 

@@ -4,11 +4,12 @@ import { ADDRESSES } from "../config/arc.js";
 import { SCHEMA_REGISTRY_ABI } from "../abis/SchemaRegistry.js";
 import { executeContractCall } from "../services/circleService.js";
 import { requireSignedNonce } from "../middleware/auth.js";
+import { issuerGuard } from "../middleware/issuerGuard.js";
 import { computeSchemaId } from "../utils/schemaHash.js";
 
 const router = Router();
 
-router.post("/register", requireSignedNonce, async (req: Request, res: Response) => {
+router.post("/register", requireSignedNonce, issuerGuard, async (req: Request, res: Response) => {
   try {
     const { name, version, fieldsJson } = req.body;
     if (!name || !version || !fieldsJson) {

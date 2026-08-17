@@ -2,6 +2,7 @@ import { publicClient } from "../services/arcService.js";
 import { ADDRESSES } from "../config/arc.js";
 import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
 import { processEvent } from "../monitoring/eventMonitor.js";
+import { notifyClaimIssued, notifyClaimRevoked } from "../services/notificationService.js";
 import { decodeEventLog } from "viem";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -106,6 +107,15 @@ export async function startClaimIndexer() {
         };
         claimIndex.set(entry.claimId, entry);
 
+        // Live-event notification: subjects learn when a credential is issued to them.
+        // (The historical catch-up scan below intentionally does NOT notify.)
+        notifyClaimIssued({
+          claimId:  entry.claimId,
+          subject:  entry.subject,
+          issuer:   entry.issuer,
+          schemaId: entry.schemaId,
+        });
+
         processEvent({
           name: "ClaimIssued",
           args: log.args as Record<string, unknown>,
@@ -130,6 +140,11 @@ export async function startClaimIndexer() {
         const existing = claimIndex.get(claimId);
         if (existing) {
           existing.revoked = true;
+          notifyClaimRevoked({
+            claimId: existing.claimId,
+            subject: existing.subject,
+            revoker: (log.args.revoker ?? "") as string,
+          });
         }
 
         processEvent({
@@ -288,6 +303,11 @@ async function _catchUpScanOnce(fromBlock: bigint, latest: bigint, chunkSize: bi
 
 export function getIndexedClaim(claimId: string): ClaimIndex | undefined {
   return claimIndex.get(claimId);
+}
+
+/** All indexed claims — used by the notification expiry sweep. */
+export function getAllIndexedClaims(): ClaimIndex[] {
+  return Array.from(claimIndex.values());
 }
 
 export function getClaimsBySubject(subject: string, includeRevoked = false): ClaimIndex[] {

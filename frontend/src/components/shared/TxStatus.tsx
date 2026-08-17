@@ -1,4 +1,5 @@
 import { useWaitForTransactionReceipt, useGasPrice } from "wagmi";
+import { Spinner } from "../ui/Spinner";
 
 interface TxStatusProps {
   hash: `0x${string}` | undefined;
@@ -13,9 +14,9 @@ export function TxStatus({ hash, onSuccess }: TxStatusProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400 text-sm">
-        <div className="animate-spin h-3 w-3 border-2 border-yellow-600 dark:border-yellow-400 border-t-transparent rounded-full" />
-        Confirming transaction...
+      <div className="flex items-center gap-2 c-warn t-sm" role="status">
+        <Spinner size={12} />
+        Confirming transaction…
       </div>
     );
   }
@@ -28,12 +29,12 @@ export function TxStatus({ hash, onSuccess }: TxStatusProps) {
     const usdcCost = totalWei ? Number(totalWei) / 1e18 : null;
 
     return (
-      <div className="flex flex-col gap-1 text-green-600 dark:text-green-400 text-sm">
-        <div className="flex items-center gap-1">
-          <span>✓</span> Transaction confirmed
+      <div className="flex flex-col gap-1 c-verified t-sm">
+        <div className="flex items-center gap-2">
+          <span aria-hidden="true">✓</span> Transaction confirmed
           {usdcCost !== null && (
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              (Fee: ${usdcCost < 0.01 ? `<0.01` : usdcCost.toFixed(2)} USDC)
+            <span className="t-xs c-subtle">
+              (Fee: ${usdcCost < 0.01 ? "<0.01" : usdcCost.toFixed(2)} USDC)
             </span>
           )}
         </div>
@@ -41,7 +42,7 @@ export function TxStatus({ hash, onSuccess }: TxStatusProps) {
           href={`https://testnet.arcscan.app/tx/${hash}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-blue-500 hover:underline font-mono truncate"
+          className="t-xs mono"
         >
           View on ArcScan ↗
         </a>
@@ -51,8 +52,8 @@ export function TxStatus({ hash, onSuccess }: TxStatusProps) {
 
   if (isError) {
     return (
-      <div className="flex items-center gap-1 text-red-600 dark:text-red-400 text-sm">
-        <span>✗</span> Transaction failed
+      <div className="flex items-center gap-2 c-danger t-sm" role="alert">
+        <span aria-hidden="true">✗</span> Transaction failed
       </div>
     );
   }

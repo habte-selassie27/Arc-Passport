@@ -16,4 +16,5 @@ coverage/
 lcov.info
 .vercel
 .indexer-state.json
+.app-state.json
 recovery/

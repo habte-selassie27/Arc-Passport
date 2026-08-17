@@ -10,9 +10,7 @@ import { KycGate }           from "../src/services/verifiers/KycGate.sol";
 import { DaoMembershipGate } from "../src/services/verifiers/DaoMembershipGate.sol";
 import { ReputationGate }    from "../src/services/verifiers/ReputationGate.sol";
 import { ArcPass__KycNotVerified, ArcPass__ScoreBelowThreshold } from "../src/core/errors/ArcPassErrors.sol";
-import { KYC_BASIC_ID }           from "../src/services/schemas/KycSchemas.sol";
-import { DAO_MEMBERSHIP_ID }      from "../src/services/schemas/DaoSchemas.sol";
-import { REPUTATION_SCORE_ID }    from "../src/services/schemas/ReputationSchemas.sol";
+import { KYC_BASIC_ID, DAO_MEMBERSHIP_ID, REPUTATION_SCORE_ID } from "../src/services/schemas/SchemaIds.sol";
 
 contract ServiceGatesTest is Test {
     AttestationRegistry public registry;

@@ -4,9 +4,11 @@ import { ADDRESSES } from "../../config/addresses";
 import { MEMO_ABI } from "../../abis/Memo";
 import { TxStatus } from "../shared/TxStatus";
 import { TransactionPreview } from "../shared/TransactionPreview";
-import { GasEstimate } from "../shared/GasEstimate";
 import { parseContractError } from "../../utils/parseContractError";
 import { toast } from "../shared/Toast";
+import { Field } from "../ui/Field";
+import { Input } from "../ui/Input";
+import { Button } from "../ui/Button";
 import { toHex } from "viem";
 
 const ATTESTATION_REGISTRY_ABI = [
@@ -38,13 +40,10 @@ export function AttestForm() {
   const attestArgs = [subjectAddr, schemaBytes, commitment, expiry] as const;
   const simEnabled = !!subject && !!schemaId && !!ADDRESSES.attestationRegistry;
 
-  // Store the simulation request for write gating (§15.6.1)
   const simRequestRef = useRef<unknown | null>(null);
-  const simErrorRef = useRef<string | null>(null);
 
   const handleSimResult = useCallback((result: { request: unknown | null; error: string | null }) => {
     simRequestRef.current = result.request;
-    simErrorRef.current = result.error;
   }, []);
 
   const { writeContract: doAttest, data: attestHash, isPending: attestPending, error: attestError } = useWriteContract({
@@ -73,13 +72,13 @@ export function AttestForm() {
       toast("error", "AttestationRegistry not configured");
       return;
     }
-    // §15.6.1: Only proceed if simulation succeeded and produced a request
+    // Only proceed if simulation succeeded and produced a request (§15.6.1)
     if (!simRequestRef.current) {
       toast("error", "Transaction simulation did not succeed. Check parameters.");
       return;
     }
     doAttest(simRequestRef.current as Parameters<typeof doAttest>[0]);
-  }, [doAttest, subject, schemaId, data, expiresAt]);
+  }, [doAttest]);
 
   const handleRecordMemo = useCallback(() => {
     if (!complianceRef || !ADDRESSES.memoContract || !ADDRESSES.usdcErc20) return;
@@ -94,61 +93,79 @@ export function AttestForm() {
   const pending = attestPending || memoPending;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-w-md mx-auto">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Subject Address</label>
-        <input
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Field label="Subject Address" htmlFor="attest-subject" helper="The wallet receiving the credential.">
+        <Input
+          id="attest-subject"
+          mono
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
           placeholder="0x..."
           required
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Schema ID</label>
-        <input
+      </Field>
+
+      <Field label="Schema ID" htmlFor="attest-schema">
+        <Input
+          id="attest-schema"
+          mono
           type="text"
           value={schemaId}
           onChange={(e) => setSchemaId(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
           placeholder="0x..."
           required
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data Commitment (bytes32)</label>
-        <input
+      </Field>
+
+      <Field label="Data Commitment (bytes32)" htmlFor="attest-data" helper="Leave empty to use the default commitment.">
+        <Input
+          id="attest-data"
+          mono
           type="text"
           value={data}
           onChange={(e) => setData(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
           placeholder="0x... or leave empty for default"
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expires At (timestamp, 0 = never)</label>
-        <input
+      </Field>
+
+      <Field label="Expires At (unix timestamp, 0 = never)" htmlFor="attest-expiry">
+        <Input
+          id="attest-expiry"
+          mono
           type="number"
           value={expiresAt}
           onChange={(e) => setExpiresAt(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
           min="0"
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          Compliance Reference <span className="text-gray-400 font-normal">(optional — recorded via Memo contract)</span>
-        </label>
-        <input
+      </Field>
+
+      <Field label="Compliance Reference (optional)" htmlFor="attest-memo" helper="Recorded via the Memo contract after issuance.">
+        <Input
+          id="attest-memo"
           type="text"
           value={complianceRef}
           onChange={(e) => setComplianceRef(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow text-sm"
           placeholder="e.g. KYC-REF-2026-00142"
         />
-      </div>
+      </Field>
+
+      {/* Commitment preview — shows the data commitment that will be stored on-chain */}
+      {simEnabled && (
+        <div style={{ marginBottom: "var(--space-4)" }}>
+          <p className="eyebrow" style={{ marginBottom: "var(--space-1)" }}>Commitment preview</p>
+          <div className="schema-compute">
+            <div className="schema-compute__step">
+              <span className="merkle-leaf" aria-hidden="true" />
+              <span className="schema-compute__arrow">→</span>
+              <span>attest(subject, schemaId, <span className="schema-compute__value">dataCommitment</span>, expiresAt)</span>
+            </div>
+            <div className="schema-compute__step" style={{ paddingLeft: "18px" }}>
+              <span className="t-xs c-subtle">on-chain: keccak256(payload) stored as bytes32 — raw data never touches the chain</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <TransactionPreview
         enabled={simEnabled}
@@ -160,39 +177,18 @@ export function AttestForm() {
         onSimResult={handleSimResult}
       />
 
-      <GasEstimate
-        enabled={simEnabled}
-        address={ADDRESSES.attestationRegistry}
-        abi={ATTESTATION_REGISTRY_ABI}
-        functionName="attest"
-        args={attestArgs}
-      />
-
-      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded p-3 text-xs text-yellow-800 dark:text-yellow-300">
-        ArcPass never asks you to approve token spending. If you see a token approval request from this site, reject it immediately.
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={pending || !simEnabled}
-          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-all active:scale-[0.98] font-medium"
-        >
-          {attestPending ? "Issuing..." : "Issue Attestation"}
-        </button>
+      <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
+        <Button type="submit" block disabled={pending || !simEnabled} loading={attestPending}>
+          Issue Attestation
+        </Button>
         {attestConfirmed && complianceRef && (
-          <button
-            type="button"
-            onClick={handleRecordMemo}
-            disabled={memoPending}
-            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 transition-all active:scale-[0.98] font-medium text-sm"
-          >
-            {memoPending ? "Recording..." : "Record Memo"}
-          </button>
+          <Button type="button" variant="ghost" onClick={handleRecordMemo} loading={memoPending} style={{ flex: 1 }}>
+            Record Memo
+          </Button>
         )}
       </div>
 
-      {attestError && <p className="text-red-600 dark:text-red-400 text-sm text-center">{parseContractError(attestError)}</p>}
+      {attestError && <p className="c-danger t-sm text-center">{parseContractError(attestError)}</p>}
       <TxStatus hash={attestHash} />
       <TxStatus hash={memoHash} />
     </form>

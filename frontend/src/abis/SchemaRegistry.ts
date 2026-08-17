@@ -31,4 +31,34 @@ export const SCHEMA_REGISTRY_ABI = [
     outputs: [{ name: "", type: "bool", internalType: "bool" }],
     stateMutability: "view",
   },
+  {
+    type: "error",
+    name: "ArcPass__SchemaAlreadyExists",
+    inputs: [{ name: "schemaId", type: "bytes32", internalType: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "ArcPass__SchemaNotFound",
+    inputs: [{ name: "schemaId", type: "bytes32", internalType: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "ArcPass__EmptySchemaName",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ArcPass__EmptyFieldsJson",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ArcPass__EmptyVersion",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ArcPass__SchemaListExhausted",
+    inputs: [],
+  },
 ] as const;

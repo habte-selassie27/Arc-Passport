@@ -88,7 +88,6 @@ function regGet(path: string, summary: string, tag: string, responseSchema: z.Zo
 
 regPost("/v1/identity/register", "Register a basic identity attestation", "identity", RegisterIdentityBody);
 regPost("/v1/identity/liveness",  "Issue a liveness verification attestation", "identity", LivenessBody);
-regGet("/v1/identity/{address}",  "Fetch identity data for an address", "identity");
 
 // ─── 2. KYC ──────────────────────────────────────────────────────────────
 
@@ -118,7 +117,6 @@ regPost("/v1/reputation/record",        "Record a reputation score for a subject
 regPost("/v1/reputation/interaction",   "Record a positive interaction event",        "reputation", InteractionBody);
 regPost("/v1/reputation/dispute",       "Record a dispute against a subject",         "reputation", DisputeBody);
 regGet("/v1/reputation/score/{address}", "Fetch reputation score for an address",     "reputation");
-regGet("/v1/reputation/history/{address}", "Fetch reputation event history",          "reputation");
 
 // ─── 6. Employment ───────────────────────────────────────────────────────
 
@@ -184,8 +182,8 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/v1/passport/{address}",
-  summary: "Fetch aggregated multi-service passport for an address",
+  path: "/passport/{address}",
+  summary: "Fetch the aggregated public passport for an address",
   tags: [TAGS.passport],
   responses: {
     200: { description: "OK", content: { "application/json": { schema: SimpleResponse } } },

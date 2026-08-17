@@ -1,20 +1,41 @@
 import { RegisterForm } from "../components/forms/RegisterForm";
 import { useWallet } from "../contexts/WalletContext";
+import { PageHeader } from "../components/ui/PageHeader";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Link } from "react-router-dom";
+import { Button } from "../components/ui/Button";
 
 export function RegisterPage() {
   const { isConnected } = useWallet();
 
   if (!isConnected) {
     return (
-      <div className="text-center py-16 animate-fade-in">
-        <p className="text-gray-600 dark:text-gray-400">Connect your wallet to register an identity.</p>
+      <div style={{ maxWidth: 560, margin: "0 auto" }}>
+        <PageHeader
+          eyebrow="Identity Registration"
+          title="Register Identity"
+          description="Create your verifiable onchain identity."
+        />
+        <EmptyState
+          title="Connect your wallet to register"
+          body="You need a connected wallet on Arc Testnet to create an onchain identity."
+          action={
+            <Link to="/guide">
+              <Button variant="ghost" size="sm">Read the Guide →</Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="max-w-lg mx-auto py-12 px-4 animate-fade-in">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">Register Identity</h1>
+    <div style={{ maxWidth: 560, margin: "0 auto" }}>
+      <PageHeader
+        eyebrow="Identity Registration"
+        title="Register Identity"
+        description="Create your verifiable onchain identity."
+      />
       <RegisterForm />
     </div>
   );

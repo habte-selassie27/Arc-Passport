@@ -15,14 +15,13 @@ const WALLET_ENV_KEYS: Record<string, string> = {
 };
 
 router.get("/status", (_req: Request, res: Response) => {
-  const status: Record<string, { configured: boolean; walletId: string | null }> = {};
+  // Never expose wallet IDs (even truncated) — they are secrets per
+  // SECURITY-ROADMAP.md §10. Only report whether each service is configured.
+  const status: Record<string, { configured: boolean }> = {};
 
   for (const [service, envKey] of Object.entries(WALLET_ENV_KEYS)) {
     const walletId = process.env[envKey] ?? null;
-    status[service] = {
-      configured: !!walletId && walletId.length > 0,
-      walletId: walletId ? `${walletId.slice(0, 8)}...` : null,
-    };
+    status[service] = { configured: !!walletId && walletId.length > 0 };
   }
 
   const configuredCount = Object.values(status).filter((s) => s.configured).length;

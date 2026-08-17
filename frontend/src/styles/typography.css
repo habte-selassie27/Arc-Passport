@@ -1,0 +1,63 @@
+/* ============================================================
+   ArcPass Typography — type scale + font assignments
+   ============================================================ */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--color-on-bright);
+}
+
+.display--medium {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--color-on-bright);
+}
+
+.body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  line-height: 1.4;
+}
+
+/* Eyebrow labels — mono, tiny, uppercase, spaced */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
+/* Type scale utilities */
+.t-xs  { font-size: var(--text-xs); }
+.t-sm  { font-size: var(--text-sm); }
+.t-base { font-size: var(--text-base); }
+.t-lg  { font-size: var(--text-lg); }
+.t-xl  { font-size: var(--text-xl); }
+.t-2xl { font-size: var(--text-2xl); }
+.t-3xl { font-size: var(--text-3xl); }
+
+@media (max-width: 640px) {
+  .t-hero { font-size: 2.25rem; }
+}
+
+/* Text colors */
+.c-on-bright { color: var(--color-on-bright); }
+.c-on-surface { color: var(--color-on-surface); }
+.c-muted { color: var(--color-muted); }
+.c-subtle { color: var(--color-subtle); }
+.c-verified { color: var(--color-verified); }
+.c-warn { color: var(--color-warn); }
+.c-danger { color: var(--color-danger); }
+.c-primary { color: var(--color-arc-primary); }

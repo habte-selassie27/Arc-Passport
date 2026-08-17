@@ -18,11 +18,12 @@ export const arcTestnet = defineChain({
 });
 
 export const ADDRESSES = {
-  identityRegistry:   (process.env.VITE_IDENTITY_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e") as `0x${string}`,
-  reputationRegistry: (process.env.VITE_REPUTATION_REGISTRY_ADDRESS || "0x8004B663056A597Dffe9eCcC1965A193B7388713") as `0x${string}`,
+  identityRegistry:   (process.env.IDENTITY_REGISTRY_ADDRESS || "0x8004A818BFB912233c491871b3d84c89A494BD9e") as `0x${string}`,
+  reputationRegistry: (process.env.REPUTATION_REGISTRY_ADDRESS || "0x8004B663056A597Dffe9eCcC1965A193B7388713") as `0x${string}`,
   attestationRegistry: process.env.ATTESTATION_REGISTRY_ADDRESS as `0x${string}` | undefined,
   schemaRegistry:      process.env.SCHEMA_REGISTRY_ADDRESS as `0x${string}` | undefined,
   passportVerifier:    process.env.PASSPORT_VERIFIER_ADDRESS as `0x${string}` | undefined,
+  batchAttestation:    process.env.BATCH_ATTESTATION_ADDRESS as `0x${string}` | undefined,
   usdcErc20:          "0x3600000000000000000000000000000000000000" as `0x${string}`,
   tokenMessengerV2:   "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA" as `0x${string}`,
   msgTransmitterV2:   "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275" as `0x${string}`,

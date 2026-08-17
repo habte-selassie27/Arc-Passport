@@ -1,0 +1,109 @@
+/* ============================================================
+   ArcPass Global Styles — reset, base, selection, focus
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-void);
+  color: var(--color-on-surface);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+::selection {
+  background: rgba(59, 130, 246, 0.35);
+  color: var(--color-on-bright);
+}
+
+/* Visible focus ring everywhere — keyboard users */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
+a {
+  color: var(--color-arc-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+img,
+svg {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* Page container */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 0 var(--space-4);
+  }
+}
+
+/* Fade-in on route change (respect reduced motion) */
+@keyframes page-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-page {
+    animation: page-fade 0.3s var(--ease-out-quart);
+  }
+}
+
+/* Terminal block used in guide / error hints */
+.terminal {
+  background: #020408;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-on-surface);
+  overflow-x: auto;
+}
+
+.terminal .t-key   { color: var(--color-muted); }
+.terminal .t-val   { color: var(--color-on-bright); }
+.terminal .t-comment { color: var(--color-subtle); }
+.terminal .t-ok    { color: var(--color-verified); }

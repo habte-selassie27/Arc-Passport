@@ -1,29 +1,33 @@
-import { IdentityAttestationService } from "./identity/IdentityAttestationService.js";
-import { KycAttestationService } from "./kyc/KycAttestationService.js";
-import { CredentialAttestationService } from "./credentials/CredentialAttestationService.js";
-import { DaoAttestationService } from "./dao/DaoAttestationService.js";
-import { ReputationAttestationService } from "./reputation/ReputationAttestationService.js";
-import { EmploymentAttestationService } from "./employment/EmploymentAttestationService.js";
-import { EducationAttestationService } from "./education/EducationAttestationService.js";
-import { SocialAttestationService } from "./social/SocialAttestationService.js";
-import { CustomAttestationService } from "./custom/CustomAttestationService.js";
 import { BaseAttestationService } from "./base/BaseAttestationService.js";
 
 export type ServiceKey =
   | "identity" | "kyc" | "credentials" | "dao"
   | "reputation" | "employment" | "education" | "social" | "custom";
 
-const registry = {
-  identity:    new IdentityAttestationService(),
-  kyc:         new KycAttestationService(),
-  credentials: new CredentialAttestationService(),
-  dao:         new DaoAttestationService(),
-  reputation:  new ReputationAttestationService(),
-  employment:  new EmploymentAttestationService(),
-  education:   new EducationAttestationService(),
-  social:      new SocialAttestationService(),
-  custom:      new CustomAttestationService(),
-} as const satisfies Record<ServiceKey, BaseAttestationService>;
+export const ALL_SERVICE_KEYS: readonly ServiceKey[] = [
+  "identity", "kyc", "credentials", "dao",
+  "reputation", "employment", "education", "social", "custom",
+] as const;
+
+/** Env var suffix for each service's Circle issuer wallet ID. */
+const WALLET_ENV_MAP: Record<ServiceKey, string> = {
+  identity:    "CIRCLE_IDENTITY_ISSUER_WALLET_ID",
+  kyc:         "CIRCLE_KYC_ISSUER_WALLET_ID",
+  credentials: "CIRCLE_CREDENTIALS_ISSUER_WALLET_ID",
+  dao:         "CIRCLE_DAO_ISSUER_WALLET_ID",
+  reputation:  "CIRCLE_REPUTATION_ISSUER_WALLET_ID",
+  employment:  "CIRCLE_EMPLOYMENT_ISSUER_WALLET_ID",
+  education:   "CIRCLE_EDUCATION_ISSUER_WALLET_ID",
+  social:      "CIRCLE_SOCIAL_ISSUER_WALLET_ID",
+  custom:      "CIRCLE_CUSTOM_ISSUER_WALLET_ID",
+};
+
+const registry = Object.fromEntries(
+  ALL_SERVICE_KEYS.map((key) => [
+    key,
+    new BaseAttestationService(key, process.env[WALLET_ENV_MAP[key]] ?? ""),
+  ])
+) as Record<ServiceKey, BaseAttestationService>;
 
 export function getService(key: ServiceKey): BaseAttestationService {
   return registry[key];
@@ -35,8 +39,3 @@ export function getAllServices(): { key: ServiceKey; service: BaseAttestationSer
     service: service as BaseAttestationService,
   }));
 }
-
-export const ALL_SERVICE_KEYS: readonly ServiceKey[] = [
-  "identity", "kyc", "credentials", "dao",
-  "reputation", "employment", "education", "social", "custom",
-] as const;

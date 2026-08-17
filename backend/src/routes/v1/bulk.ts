@@ -5,6 +5,7 @@ import type { AttestInput, BatchItemResult } from "../../services/attestation/ba
 import { asAddress, asSchemaId } from "../../utils/address.js";
 import { validateBody } from "../../utils/validate.js";
 import { requireSignedNonce } from "../../middleware/auth.js";
+import { issuerGuard } from "../../middleware/issuerGuard.js";
 import { csvToObjects, type CsvRowError } from "../../utils/csv.js";
 import { encodeAbiParameters, parseAbiParameters } from "viem";
 import {
@@ -193,7 +194,7 @@ interface BulkResponse {
   errors:   CsvRowError[];
 }
 
-router.post("/", requireSignedNonce, validateBody(BulkJsonBodyRoute), async (req: Request, res: Response) => {
+router.post("/", requireSignedNonce, issuerGuard, validateBody(BulkJsonBodyRoute), async (req: Request, res: Response) => {
   try {
     const { service, items, mode } = req.body as z.infer<typeof BulkJsonBody>;
     if (service === "custom") {
@@ -234,7 +235,7 @@ router.post("/", requireSignedNonce, validateBody(BulkJsonBodyRoute), async (req
   }
 });
 
-router.post("/csv", requireSignedNonce, validateBody(BulkCsvBodyRoute), async (req: Request, res: Response) => {
+router.post("/csv", requireSignedNonce, issuerGuard, validateBody(BulkCsvBodyRoute), async (req: Request, res: Response) => {
   try {
     const { service, csv, mode } = req.body as z.infer<typeof BulkCsvBody>;
     if (service === "custom") {

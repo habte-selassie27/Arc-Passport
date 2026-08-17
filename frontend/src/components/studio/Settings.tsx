@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ALL_SERVICE_KEYS, SERVICE_LABELS, type ServiceKey } from "../../types/passport";
+import { Card } from "../ui/Card";
 
 interface WalletStatus {
   configured: boolean;
@@ -32,16 +33,21 @@ export function Settings() {
   }, []);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6 space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Issuer Settings</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400">
+    <Card>
+      <h3 className="display--medium t-lg" style={{ marginBottom: "var(--space-2)" }}>Issuer Settings</h3>
+      <p className="t-sm c-muted" style={{ marginBottom: "var(--space-4)" }}>
         Per-service issuer wallet status. Configured via backend Circle wallets.
       </p>
-      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {error && (
+        <div className="sim-box--failed sim-box" style={{ marginBottom: "var(--space-4)" }}>
+          <p className="sim-box__row"><span className="sim-box__fail" aria-hidden="true">✗</span> {error}</p>
+        </div>
+      )}
 
       {data && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {data.configuredCount}/{data.totalCount} services configured &middot; Chain: {data.blockchain}
+        <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-4)" }}>
+          {data.configuredCount}/{data.totalCount} services configured · Chain: {data.blockchain}
         </p>
       )}
 
@@ -52,27 +58,26 @@ export function Settings() {
           return (
             <div
               key={key}
-              className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-700 rounded-lg"
+              className="flex items-center justify-between"
+              style={{
+                padding: "var(--space-3) var(--space-4)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                background: configured ? "rgba(0,229,160,0.03)" : "transparent",
+              }}
             >
               <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{SERVICE_LABELS[key]}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                  CIRCLE_{key.toUpperCase()}_ISSUER_WALLET_ID
-                </p>
+                <p className="t-sm" style={{ fontWeight: 500, color: "var(--color-on-surface)" }}>{SERVICE_LABELS[key]}</p>
+                <p className="mono t-xs c-subtle">CIRCLE_{key.toUpperCase()}_ISSUER_WALLET_ID</p>
               </div>
-              <span
-                className={`text-xs px-2 py-1 rounded ${
-                  configured
-                    ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                    : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
-                }`}
-              >
+              <span className={`flex items-center gap-2 ${configured ? "chip--configured" : "chip--muted"}`} style={{ fontSize: "var(--text-xs)" }}>
+                <span className={`dot ${configured ? "dot--on" : "dot--off"}`} aria-hidden="true" />
                 {configured ? "configured" : "not configured"}
               </span>
             </div>
           );
         })}
       </div>
-    </div>
+    </Card>
   );
 }

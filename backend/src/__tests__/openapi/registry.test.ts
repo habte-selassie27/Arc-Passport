@@ -25,7 +25,7 @@ describe("OpenAPI spec generation", () => {
       expect(paths.some((p) => p.startsWith(prefix))).toBe(true);
     }
     expect(paths.some((p) => p.startsWith("/v1/bulk"))).toBe(true);
-    expect(paths.some((p) => p.startsWith("/v1/passport"))).toBe(true);
+    expect(paths.some((p) => p.startsWith("/passport"))).toBe(true);
   });
 
   it("registers common response schemas as components", () => {

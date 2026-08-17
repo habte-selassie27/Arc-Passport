@@ -1,36 +1,41 @@
 import { useMemo, useState } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 import { apiUrl } from "../../config/api";
+import { Card } from "../ui/Card";
+import { Field } from "../ui/Field";
+import { Select } from "../ui/Select";
+import { Button } from "../ui/Button";
+import { SegmentedControl } from "../ui/SegmentedControl";
 
 type ServiceKey = "identity" | "kyc" | "credentials" | "dao" | "reputation" | "employment" | "education" | "social" | "custom";
 
 const SERVICE_OPTIONS: { key: ServiceKey; label: string; description: string; csvHeader: string }[] = [
-  { key: "identity",    label: "Identity",    description: "Display name + avatar (BASIC_IDENTITY)",       csvHeader: "subject,displayName,avatarCid,expiresAt" },
-  { key: "kyc",         label: "KYC",         description: "KYC level 0-3 + ISO country + provider",     csvHeader: "subject,level,country,provider,expiresAt" },
+  { key: "identity", label: "Identity", description: "Display name + avatar (BASIC_IDENTITY)", csvHeader: "subject,displayName,avatarCid,expiresAt" },
+  { key: "kyc", label: "KYC", description: "KYC level 0-3 + ISO country + provider", csvHeader: "subject,level,country,provider,expiresAt" },
   { key: "credentials", label: "Credentials", description: "Certification name + issuing body + cert ID", csvHeader: "subject,certName,issuingBody,certId,validUntil" },
-  { key: "dao",         label: "DAO",         description: "DAO name + role + voting weight",            csvHeader: "subject,daoName,daoAddress,role,votingWeight" },
-  { key: "reputation",  label: "Reputation",  description: "Score (uint256) + domain + data points",     csvHeader: "subject,score,domain,dataPoints,expiresAt" },
-  { key: "employment",  label: "Employment",  description: "Employer + role + start/end dates",          csvHeader: "subject,employer,role,startDate,endDate" },
-  { key: "education",   label: "Education",   description: "Institution + degree + graduation year",     csvHeader: "subject,institution,degree,fieldOfStudy,graduationYear" },
-  { key: "social",      label: "Social",      description: "Platform + handle + profile ID",             csvHeader: "subject,platform,handle,profileId,expiresAt" },
+  { key: "dao", label: "DAO", description: "DAO name + role + voting weight", csvHeader: "subject,daoName,daoAddress,role,votingWeight" },
+  { key: "reputation", label: "Reputation", description: "Score (uint256) + domain + data points", csvHeader: "subject,score,domain,dataPoints,expiresAt" },
+  { key: "employment", label: "Employment", description: "Employer + role + start/end dates", csvHeader: "subject,employer,role,startDate,endDate" },
+  { key: "education", label: "Education", description: "Institution + degree + graduation year", csvHeader: "subject,institution,degree,fieldOfStudy,graduationYear" },
+  { key: "social", label: "Social", description: "Platform + handle + profile ID", csvHeader: "subject,platform,handle,profileId,expiresAt" },
 ];
 
 interface BulkResult {
-  index:    number;
-  success:  boolean;
-  txHash?:  string;
-  error?:   string;
+  index: number;
+  success: boolean;
+  txHash?: string;
+  error?: string;
   message?: string;
 }
 
 interface BulkResponse {
-  service:   ServiceKey;
-  mode:      "batch" | "perItem";
-  total:     number;
+  service: ServiceKey;
+  mode: "batch" | "perItem";
+  total: number;
   succeeded: number;
-  failed:    number;
-  results:   BulkResult[];
-  errors:    { row: number; field?: string; error: string }[];
+  failed: number;
+  results: BulkResult[];
+  errors: { row: number; field?: string; error: string }[];
 }
 
 function parsePreview(csv: string): { headers: string[]; rows: string[][]; errors: string[] } {
@@ -70,15 +75,17 @@ function parsePreview(csv: string): { headers: string[]; rows: string[][]; error
 export function BulkIssue() {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
-  const [service, setService]   = useState<ServiceKey>("identity");
-  const [csv, setCsv]           = useState("");
-  const [mode, setMode]         = useState<"batch" | "perItem">("perItem");
+  const [service, setService] = useState<ServiceKey>("identity");
+  const [csv, setCsv] = useState("");
+  const [mode, setMode] = useState<"batch" | "perItem">("perItem");
   const [submitting, setSubmit] = useState(false);
   const [response, setResponse] = useState<BulkResponse | null>(null);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const selected = SERVICE_OPTIONS.find((s) => s.key === service)!;
-  const preview  = useMemo(() => parsePreview(csv), [csv]);
+  const preview = useMemo(() => parsePreview(csv), [csv]);
+  const rowCount = preview.rows.length;
+  const pct = Math.min((rowCount / 100) * 100, 100);
 
   const handleFile = (file: File | null) => {
     if (!file) return;
@@ -96,12 +103,12 @@ export function BulkIssue() {
       const signature = await signMessageAsync({ message });
 
       const res = await fetch(apiUrl("/v1/bulk/csv"), {
-        method:  "POST",
+        method: "POST",
         headers: {
-          "Content-Type":     "application/json",
+          "Content-Type": "application/json",
           "x-wallet-address": address,
-          "x-signature":      signature,
-          "x-nonce":          nonce,
+          "x-signature": signature,
+          "x-nonce": nonce,
         },
         body: JSON.stringify({ service, csv, mode }),
       });
@@ -127,158 +134,126 @@ export function BulkIssue() {
           ? "subject,institution,degree,fieldOfStudy,graduationYear\n0x0000000000000000000000000000000000000001,MIT,BS,Computer Science,2024"
           : `subject,...\n0x0000000000000000000000000000000000000001,...`;
     const blob = new Blob([sample], { type: "text/csv" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
     a.href = url; a.download = `${selected.key}-template.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <Card>
+      <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-4)" }}>
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Bulk Issue</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <h3 className="display--medium t-lg" style={{ marginBottom: "var(--space-1)" }}>Bulk Issue</h3>
+          <p className="t-xs c-muted">
             CSV-driven batch attestation. Up to 100 rows per request. Per-item try/catch — one failure does not abort the batch.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={downloadTemplate}
-          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-        >
+        <Button variant="ghost" size="sm" onClick={downloadTemplate}>
           Download template
-        </button>
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Service</label>
-          <select
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ marginBottom: "var(--space-4)" }}>
+        <Field label="Service" htmlFor="bulk-service">
+          <Select
+            id="bulk-service"
             value={service}
             onChange={(e) => { setService(e.target.value as ServiceKey); setResponse(null); }}
-            className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
           >
             {SERVICE_OPTIONS.map((s) => (
               <option key={s.key} value={s.key}>{s.label} — {s.description}</option>
             ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Mode</label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setMode("perItem")}
-              className={`flex-1 px-3 py-2 rounded text-sm font-medium border ${mode === "perItem" ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700"}`}
-            >
-              Per-item (row-level errors)
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("batch")}
-              className={`flex-1 px-3 py-2 rounded text-sm font-medium border ${mode === "batch" ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700"}`}
-            >
-              Batch (single tx)
-            </button>
-          </div>
+          </Select>
+        </Field>
+
+        <div className="field">
+          <label className="field__label">Mode</label>
+          <SegmentedControl
+            options={[
+              { value: "perItem" as const, label: "Per-item (row-level errors)" },
+              { value: "batch" as const, label: "Batch (single tx)" },
+            ]}
+            value={mode}
+            onChange={setMode}
+          />
         </div>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">CSV</label>
-          <label className="text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+      <div className="field" style={{ marginBottom: "var(--space-4)" }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-1)" }}>
+          <label className="field__label">CSV</label>
+          <label className="file-label">
             Upload .csv file
             <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => handleFile(e.target.files?.[0] ?? null)} />
           </label>
         </div>
-        <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400 mb-1">Header: {selected.csvHeader}</div>
+        <p className="mono t-xs c-subtle" style={{ marginBottom: "var(--space-1)" }}>
+          Header: {selected.csvHeader}
+        </p>
         <textarea
           value={csv}
           onChange={(e) => { setCsv(e.target.value); setResponse(null); }}
           placeholder={`${selected.csvHeader}\n0x0000000000000000000000000000000000000001,...`}
           rows={10}
-          className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-mono"
+          className="input input--mono"
+          style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", lineHeight: 1.6 }}
         />
         {preview.errors.length > 0 && (
-          <ul className="mt-2 text-xs text-amber-600 dark:text-amber-400 list-disc list-inside">
+          <ul className="t-xs c-warn" style={{ marginTop: "var(--space-2)", listStyle: "disc", paddingLeft: "var(--space-5)" }}>
             {preview.errors.slice(0, 5).map((e, i) => <li key={i}>{e}</li>)}
             {preview.errors.length > 5 && <li>… and {preview.errors.length - 5} more</li>}
           </ul>
         )}
       </div>
 
-      {preview.rows.length > 0 && (
-        <div className="rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
-          <div className="text-xs text-gray-500 dark:text-gray-400 px-3 py-1 bg-gray-50 dark:bg-gray-900">
-            Preview: {preview.rows.length} row{preview.rows.length === 1 ? "" : "s"}
-          </div>
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300">
-              <tr>
-                <th className="px-2 py-1 text-left">#</th>
-                {preview.headers.map((h) => <th key={h} className="px-2 py-1 text-left">{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {preview.rows.slice(0, 50).map((cells, i) => (
-                <tr key={i} className="border-t border-gray-100 dark:border-gray-700">
-                  <td className="px-2 py-1 text-gray-500">{i + 2}</td>
-                  {preview.headers.map((_h, j) => (
-                    <td key={j} className="px-2 py-1 font-mono whitespace-nowrap">{cells[j] ?? ""}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {preview.rows.length > 50 && (
-            <div className="text-[10px] text-gray-500 dark:text-gray-400 px-3 py-1">… and {preview.rows.length - 50} more</div>
-          )}
+      {/* Progress indicator */}
+      <div className="flex items-center gap-3" style={{ marginBottom: "var(--space-4)" }}>
+        <div className="progress">
+          <div className="progress__fill" style={{ width: `${pct}%` }} />
         </div>
-      )}
+        <span className="mono t-xs c-subtle" style={{ flexShrink: 0 }}>
+          {rowCount} / 100 rows
+        </span>
+      </div>
 
       {error && (
-        <div className="rounded border border-red-300 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-300">
-          {error}
+        <div className="sim-box--failed sim-box" role="alert" style={{ marginBottom: "var(--space-4)" }}>
+          <p className="sim-box__row"><span className="sim-box__fail" aria-hidden="true">✗</span> {error}</p>
         </div>
       )}
 
       {response && (
-        <div className="rounded border border-gray-200 dark:border-gray-700 p-3 space-y-2">
-          <div className="flex flex-wrap gap-3 text-xs">
-            <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200">total: {response.total}</span>
-            <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200">succeeded: {response.succeeded}</span>
-            <span className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200">failed: {response.failed}</span>
-            <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">mode: {response.mode}</span>
+        <Card style={{ marginBottom: "var(--space-4)" }}>
+          <div className="flex flex-wrap gap-3 t-xs" style={{ marginBottom: "var(--space-3)" }}>
+            <span className="chip chip--pending">total: {response.total}</span>
+            <span className="chip chip--valid">succeeded: {response.succeeded}</span>
+            <span className="chip chip--revoked">failed: {response.failed}</span>
+            <span className="chip chip--muted">mode: {response.mode}</span>
           </div>
           {response.errors.length > 0 && (
-            <div className="text-xs text-amber-700 dark:text-amber-300">
+            <p className="t-xs c-warn" style={{ marginBottom: "var(--space-3)" }}>
               Validation errors: {response.errors.map((e) => `row ${e.row} (${e.error})`).join("; ")}
-            </div>
+            </p>
           )}
           {response.results.length > 0 && (
-            <div className="max-h-64 overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50 dark:bg-gray-900">
-                  <tr>
-                    <th className="px-2 py-1 text-left">#</th>
-                    <th className="px-2 py-1 text-left">Status</th>
-                    <th className="px-2 py-1 text-left">txHash / error</th>
-                  </tr>
+            <div style={{ maxHeight: 256, overflowY: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)" }}>
+              <table className="table">
+                <thead>
+                  <tr><th>#</th><th>Status</th><th>txHash / error</th></tr>
                 </thead>
                 <tbody>
                   {response.results.map((r, i) => (
-                    <tr key={i} className="border-t border-gray-100 dark:border-gray-700">
-                      <td className="px-2 py-1">{r.index + 2}</td>
-                      <td className="px-2 py-1">
+                    <tr key={i}>
+                      <td className="c-subtle">{r.index + 2}</td>
+                      <td>
                         {r.success
-                          ? <span className="text-green-600 dark:text-green-400">✓</span>
-                          : <span className="text-red-600 dark:text-red-400">✗ {r.error}</span>}
+                          ? <span className="c-verified">✓</span>
+                          : <span className="c-danger">✗ {r.error}</span>}
                       </td>
-                      <td className="px-2 py-1 font-mono break-all">
+                      <td className="mono" style={{ fontSize: "var(--text-xs)" }}>
                         {r.success
-                          ? <a href={`https://testnet.arcscan.app/tx/${r.txHash}`} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">{r.txHash}</a>
+                          ? <a href={`https://testnet.arcscan.app/tx/${r.txHash}`} target="_blank" rel="noreferrer" className="c-primary">{r.txHash}</a>
                           : r.message}
                       </td>
                     </tr>
@@ -287,22 +262,22 @@ export function BulkIssue() {
               </table>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          {preview.rows.length} row{preview.rows.length === 1 ? "" : "s"} ready · max 100
+        <span className="mono t-xs c-subtle">
+          {rowCount} row{rowCount === 1 ? "" : "s"} ready · max 100
         </span>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          disabled={submitting || rowCount === 0 || !address}
+          loading={submitting}
           onClick={submit}
-          disabled={submitting || preview.rows.length === 0 || !address}
-          className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium text-sm transition-colors"
         >
-          {!address ? "Connect wallet" : submitting ? "Submitting…" : `Submit ${preview.rows.length} row${preview.rows.length === 1 ? "" : "s"}`}
-        </button>
+          {!address ? "Connect wallet" : submitting ? "Submitting…" : `Submit ${rowCount} row${rowCount === 1 ? "" : "s"}`}
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }

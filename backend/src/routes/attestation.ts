@@ -88,18 +88,4 @@ router.get("/claim/:claimId", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/:address", async (req: Request, res: Response) => {
-  try {
-    res.json({
-      success: true,
-      data: { address: req.params.address, message: "Query specific schema via /passport/:address" },
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: { code: "FETCH_ERROR", message: (err as Error).message },
-    });
-  }
-});
-
 export default router;

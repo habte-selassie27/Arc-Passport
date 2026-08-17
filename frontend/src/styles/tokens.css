@@ -1,0 +1,118 @@
+/* ============================================================
+   ArcPass Design Tokens — Cryptographic Precision
+   All color/typography/spacing/shape/motion values live here.
+   No hardcoded hex values anywhere else in the codebase.
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Color palette ---- */
+  --color-void:        #080B12;   /* page background — near-black with a blue undertone */
+  --color-surface-0:   #0D1117;   /* card base */
+  --color-surface-1:   #131924;   /* card elevated / hover */
+  --color-surface-2:   #1C2333;   /* input background */
+  --color-border:      #1E2D40;   /* default border */
+  --color-border-glow: #2A4060;   /* border on hover */
+
+  --color-arc-primary: #3B82F6;   /* Arc blue — primary action */
+  --color-arc-dim:     #1D4ED8;   /* darker Arc blue for pressed states */
+
+  /* THE SIGNATURE ACCENT — verification confirmed. Used ONLY for
+     valid/confirmed on-chain states. Nowhere else. */
+  --color-verified:    #00E5A0;
+  --color-verified-bg: rgba(0, 229, 160, 0.06);
+
+  /* Status palette */
+  --color-warn:        #F59E0B;   /* amber — pending / waiting */
+  --color-danger:      #EF4444;   /* red — revoked / error */
+  --color-muted:       #94A3B8;   /* secondary text */
+  --color-subtle:      #475569;   /* tertiary text / placeholders */
+  --color-on-surface:  #E2E8F0;   /* primary text */
+  --color-on-bright:   #F8FAFC;   /* heading text */
+
+  /* ---- Typography ---- */
+  --font-display: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  --text-xs:    0.6875rem;   /* 11px — meta, eyebrow labels */
+  --text-sm:    0.8125rem;   /* 13px — secondary body, captions */
+  --text-base:  0.9375rem;   /* 15px — primary body */
+  --text-lg:    1.125rem;    /* 18px — card titles */
+  --text-xl:    1.375rem;    /* 22px — section headings */
+  --text-2xl:   1.75rem;     /* 28px — page titles (desktop) */
+  --text-3xl:   2.25rem;     /* 36px — hero headline */
+  --text-hero:  3.5rem;      /* 56px — landing hero (mobile: 2.25rem) */
+
+  /* ---- Spacing (4px base) ---- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ---- Shape & elevation ---- */
+  --radius-sm: 4px;    /* chips, status badges */
+  --radius-md: 8px;    /* inputs, small cards */
+  --radius-lg: 12px;   /* cards */
+  --radius-xl: 16px;   /* modals, panels */
+
+  --shadow-card:    0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px var(--color-border);
+  --shadow-focus:   0 0 0 3px rgba(59, 130, 246, 0.35);
+  --shadow-verified: 0 0 0 1px rgba(0, 229, 160, 0.4), 0 0 16px rgba(0, 229, 160, 0.12);
+
+  /* ---- Motion ---- */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-out:    cubic-bezier(0.4, 0, 0.2, 1);
+
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-slow: 380ms;
+}
+
+/* Verified state glow pulse — used ONLY on valid credential cards.
+   Static states must read clearly without motion. */
+@keyframes verified-pulse {
+  0%, 100% { box-shadow: var(--shadow-verified); }
+  50%      { box-shadow: 0 0 0 1px rgba(0,229,160,0.6), 0 0 28px rgba(0,229,160,0.22); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card--verified {
+    animation: verified-pulse 3s ease-in-out infinite;
+  }
+}
+
+/* Live indicator pulse — Studio real-time activity */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .live-dot--on {
+    animation: live-pulse 2s ease-in-out infinite;
+  }
+}
+
+/* Spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}

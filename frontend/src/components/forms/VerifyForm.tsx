@@ -1,10 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useReadContract } from "wagmi";
-import { keccak256, encodePacked } from "viem";
 import { ADDRESSES } from "../../config/addresses";
-import { AddressDisplay } from "../shared/AddressDisplay";
-import { SCHEMA_TEMPLATES } from "../studio/SchemaTemplates";
-import type { ServiceKey } from "../../types/passport";
+import { AddressDisplay } from "../ui/AddressDisplay";
+import { PRESET_SCHEMAS } from "../../utils/schemaNames";
+import { Field } from "../ui/Field";
+import { Input } from "../ui/Input";
+import { Select } from "../ui/Select";
+import { Button } from "../ui/Button";
+import { Card } from "../ui/Card";
+import { StatusChip } from "../ui/StatusChip";
 
 const PASSPORT_VERIFIER_ABI = [
   {
@@ -26,26 +30,20 @@ const PASSPORT_VERIFIER_ABI = [
   },
 ] as const;
 
-type SchemaOption = { label: string; service: string; schemaId: string };
-
-const PRESET_SCHEMAS: SchemaOption[] = (Object.entries(SCHEMA_TEMPLATES) as [ServiceKey, typeof SCHEMA_TEMPLATES[ServiceKey]][]).flatMap(
-  ([service, templates]) =>
-    templates.map((t) => ({
-      label: `${t.name} v${t.version}`,
-      service,
-      schemaId: keccak256(encodePacked(["string", "string", "string"], [t.name, t.version, JSON.stringify(t.fields.map((f: { name: string; type: string }) => ({ name: f.name, type: f.type })))])),
-    }))
-);
+function formatDate(ts: bigint): string {
+  if (ts <= 0n) return "—";
+  return new Date(Number(ts) * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
 
 export function VerifyForm() {
   const [subject, setSubject] = useState("");
   const [schemaId, setSchemaId] = useState("");
   const [selectedPreset, setSelectedPreset] = useState("");
-  const [inputMode, setInputMode] = useState<"preset" | "hex">("preset");
+  const [manualOpen, setManualOpen] = useState(false);
   const [shouldVerify, setShouldVerify] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
 
-  const effectiveSchemaId = inputMode === "preset" ? selectedPreset : schemaId;
+  const effectiveSchemaId = manualOpen ? schemaId : selectedPreset;
 
   const { data, isLoading, isError, error, fetchStatus } = useReadContract({
     address: ADDRESSES.passportVerifier,
@@ -78,126 +76,173 @@ export function VerifyForm() {
   const querying = isLoading && fetchStatus === "fetching";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-w-md mx-auto">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Subject Address</label>
-        <input
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Field label="Subject Address" htmlFor="verify-subject" helper="Any wallet address on Arc Testnet.">
+        <Input
+          id="verify-subject"
+          mono
           type="text"
           value={subject}
-          onChange={(e) => { setSubject(e.target.value); setShouldVerify(false); setConfigError(null); }}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-shadow"
+          onChange={(e) => {
+            setSubject(e.target.value);
+            setShouldVerify(false);
+            setConfigError(null);
+          }}
           placeholder="0x..."
           required
         />
-      </div>
+      </Field>
 
-      <div className="flex gap-2 mb-1">
-        <button
-          type="button"
-          onClick={() => setInputMode("preset")}
-          className={`px-3 py-1 text-xs rounded-t-md border-b-0 transition-colors ${
-            inputMode === "preset"
-              ? "bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border border-gray-300 dark:border-gray-600 font-semibold"
-              : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
-          }`}
+      <div className="field">
+        <label className="field__label" htmlFor="verify-schema">Schema</label>
+        <Select
+          id="verify-schema"
+          value={selectedPreset}
+          onChange={(e) => {
+            setSelectedPreset(e.target.value);
+            setShouldVerify(false);
+            setConfigError(null);
+          }}
+          disabled={manualOpen}
         >
-          Pick a schema
-        </button>
-        <button
-          type="button"
-          onClick={() => setInputMode("hex")}
-          className={`px-3 py-1 text-xs rounded-t-md border-b-0 transition-colors ${
-            inputMode === "hex"
-              ? "bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border border-gray-300 dark:border-gray-600 font-semibold"
-              : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
-          }`}
-        >
-          Enter hex ID
-        </button>
-      </div>
-
-      {inputMode === "preset" ? (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Schema</label>
-          <select
-            value={selectedPreset}
-            onChange={(e) => { setSelectedPreset(e.target.value); setShouldVerify(false); setConfigError(null); }}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-shadow text-sm"
-            required
-          >
-            <option value="">-- Select schema --</option>
-            {PRESET_SCHEMAS.map((s) => (
-              <option key={s.schemaId} value={s.schemaId}>
-                {s.label} ({s.service})
-              </option>
-            ))}
-          </select>
+          <option value="">-- Select schema --</option>
+          {PRESET_SCHEMAS.map((s) => (
+            <option key={s.schemaId} value={s.schemaId}>
+              {s.label} ({s.service})
+            </option>
+          ))}
+        </Select>
+        <div style={{ marginTop: "var(--space-2)" }}>
+          {manualOpen ? (
+            <button
+              type="button"
+              className="btn btn--link btn--sm"
+              onClick={() => {
+                setManualOpen(false);
+                setShouldVerify(false);
+              }}
+            >
+              ← Pick a schema from the list
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--link btn--sm"
+              onClick={() => {
+                setManualOpen(true);
+                setShouldVerify(false);
+              }}
+            >
+              Enter schema ID manually
+            </button>
+          )}
         </div>
-      ) : (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Schema ID (hex)</label>
-          <input
+      </div>
+
+      {manualOpen && (
+        <Field label="Schema ID (hex)" htmlFor="verify-hex">
+          <Input
+            id="verify-hex"
+            mono
             type="text"
             value={schemaId}
-            onChange={(e) => { setSchemaId(e.target.value); setShouldVerify(false); setConfigError(null); }}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md font-mono text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-shadow"
+            onChange={(e) => {
+              setSchemaId(e.target.value);
+              setShouldVerify(false);
+              setConfigError(null);
+            }}
             placeholder="0x..."
-            required
           />
-        </div>
+        </Field>
       )}
 
-      <button
-        type="submit"
-        disabled={querying || !effectiveSchemaId || !subject}
-        className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-all active:scale-[0.98] font-medium"
-      >
-        {querying ? "Verifying..." : "Verify Credential"}
-      </button>
+      <Button type="submit" block disabled={querying || !effectiveSchemaId || !subject} loading={querying}>
+        Verify Credential
+      </Button>
 
       {configError && (
-        <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md text-yellow-800 dark:text-yellow-300 text-sm">
+        <p className="c-warn t-sm" role="alert" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--radius-md)", padding: "var(--space-3) var(--space-4)" }}>
           {configError}
-        </div>
+        </p>
       )}
 
-      {querying && (
-        <div className="text-center py-4">
-          <div className="animate-spin w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full mx-auto mb-2" />
-          <p className="text-xs text-gray-500 dark:text-gray-400">Checking on-chain credential...</p>
-        </div>
-      )}
-
-      {result && !querying && (
-        <div className={`p-4 rounded-md border transition-all ${
-          result[0]
-            ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-            : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-        }`}>
-          <p className={`font-bold ${result[0] ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
-            {result[0] ? "Valid Credential" : "No Valid Credential Found"}
-          </p>
-          {selectedLabel && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Schema: {selectedLabel}</p>
-          )}
-          {result[0] ? (
-            <div className="mt-2 text-xs space-y-1 text-gray-600 dark:text-gray-400">
-              <p>Claim: <span className="font-mono">{result[1].slice(0, 16)}...</span></p>
-              <p>Issuer: <AddressDisplay address={result[2]} /></p>
-              <p>Issued: {new Date(Number(result[3]) * 1000).toLocaleString()}</p>
-              {result[4] > 0n && <p>Expires: {new Date(Number(result[4]) * 1000).toLocaleString()}</p>}
+      {result && !querying && result[0] && (
+        <Card verified style={{ marginTop: "var(--space-4)" }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-3)" }}>
+            <div className="flex items-center gap-2">
+              <span className="merkle-leaf" aria-hidden="true" />
+              <p className="card__title">{selectedLabel ?? "Verified credential"}</p>
             </div>
-          ) : (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              The subject does not have a valid claim for this schema. They may need to get verified by an issuer first.
-            </p>
-          )}
-        </div>
+            <StatusChip status="VALID" />
+          </div>
+          {/* Verification proof summary */}
+          <div className="verification-pulse" style={{ marginBottom: "var(--space-3)" }}>
+            <span className="verification-pulse__dot" aria-hidden="true" />
+            <span>On-chain verification passed — claim is valid, not revoked, not expired</span>
+          </div>
+          <div>
+            <div className="data-row">
+              <span className="data-row__label">Subject</span>
+              <span className="data-row__value"><AddressDisplay address={subject as `0x${string}`} /></span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Issuer</span>
+              <span className="data-row__value"><AddressDisplay address={result[2]} /></span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Issued</span>
+              <span className="data-row__value">{formatDate(result[3])}</span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Expires</span>
+              <span className="data-row__value">{result[4] > 0n ? formatDate(result[4]) : "Never"}</span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Claim ID</span>
+              <span className="data-row__value data-row__value--mono">
+                <AddressDisplay address={result[1]} truncate={false} />
+              </span>
+            </div>
+          </div>
+          {/* Data commitment — the Merkle root stored on-chain */}
+          <div style={{ marginTop: "var(--space-3)" }}>
+            <div className="commitment">
+              <span className="merkle-leaf" aria-hidden="true" />
+              <span className="commitment__label">dataCommitment</span>
+              <span className="commitment__hash">{result[5].slice(0, 18)}…{result[5].slice(-6)}</span>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {result && !querying && !result[0] && (
+        <Card revoked style={{ marginTop: "var(--space-4)" }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-3)" }}>
+            <p className="card__title">No valid attestation</p>
+            <StatusChip status="REVOKED" />
+          </div>
+          <p className="card__desc">
+            No valid attestation found for this address and schema combination. The credential may
+            not exist, may be revoked, or may have expired.
+          </p>
+          <div className="commitment" style={{ marginTop: "var(--space-3)", opacity: 0.5 }}>
+            <span className="merkle-leaf merkle-leaf--off" aria-hidden="true" />
+            <span className="commitment__label">commitment</span>
+            <span className="commitment__hash">no valid claim</span>
+          </div>
+        </Card>
       )}
 
       {isError && !querying && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-red-700 dark:text-red-300 text-sm">
+        <p className="c-danger t-sm" role="alert">
           {(error as Error)?.message || "Verification failed"}
+        </p>
+      )}
+
+      {querying && (
+        <div className="text-center" style={{ padding: "var(--space-4) 0" }}>
+          <span className="spinner" style={{ margin: "0 auto var(--space-2)", display: "block" }} aria-hidden="true" />
+          <p className="c-subtle t-xs">Checking on-chain credential…</p>
         </div>
       )}
     </form>

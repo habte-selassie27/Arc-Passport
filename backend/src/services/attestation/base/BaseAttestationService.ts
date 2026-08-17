@@ -1,8 +1,10 @@
-import { decodeEventLog, encodeAbiParameters, parseAbiParameters } from "viem";
+import { encodeAbiParameters, keccak256 } from "viem";
 import { getCircleClient, assertBlockchain } from "../../../config/circle.js";
 import { publicClient } from "../../arcService.js";
 import { ADDRESSES } from "../../../config/arc.js";
 import { ATTESTATION_REGISTRY_ABI } from "../../../abis/AttestationRegistry.js";
+import { PASSPORT_VERIFIER_ABI } from "../../../abis/PassportVerifier.js";
+import { BATCH_ATTESTATION_ABI } from "../../../abis/BatchAttestation.js";
 import { Errors } from "../../../utils/errors.js";
 
 export interface AttestInput {
@@ -20,7 +22,7 @@ export interface BatchItemResult {
   message?: string;
 }
 
-export abstract class BaseAttestationService {
+export class BaseAttestationService {
   protected readonly serviceName: string;
   protected readonly walletId: string;
 
@@ -36,9 +38,17 @@ export abstract class BaseAttestationService {
       throw Errors.InvalidSchemaId(input.schemaId ?? "0x0");
     }
 
+    // The deployed AttestationRegistry stores a `bytes32 dataCommitment` (a hash of
+    // the claim payload), NOT the raw abi-encoded bytes. The service subclasses build
+    // `input.data` as variable-length abi-encoded claim data, so we commit to its
+    // keccak256 onchain. The full payload must be stored off-chain (IPFS) and
+    // disclosed via selective-disclosure proofs.
+    const dataCommitment = keccak256(input.data);
+
     const txId = await this._submitToCircle(
-      "attest(address,bytes32,bytes,uint256)",
-      [input.subject, input.schemaId, input.data, input.expiresAt.toString()]
+      "attest(address,bytes32,bytes32,uint256)",
+      [input.subject, input.schemaId, dataCommitment, input.expiresAt.toString()],
+      ADDRESSES.attestationRegistry!
     );
     return this._pollForHash(txId);
   }
@@ -49,7 +59,8 @@ export abstract class BaseAttestationService {
 
     const txId = await this._submitToCircle(
       "revoke(bytes32)",
-      [claimId]
+      [claimId],
+      ADDRESSES.attestationRegistry!
     );
     return this._pollForHash(txId);
   }
@@ -59,20 +70,32 @@ export abstract class BaseAttestationService {
       throw Errors.InvalidBatchSize(inputs.length);
     }
     this._assertBlockchain();
+    if (!ADDRESSES.batchAttestation) {
+      throw Errors.IssuerNotConfigured(this.serviceName, "BATCH_ATTESTATION_ADDRESS");
+    }
 
     const encoded = inputs.map((i) => ({
       subject:        i.subject,
       schemaId:       i.schemaId,
-      dataCommitment: i.data,
+      dataCommitment: keccak256(i.data),
       expiresAt:      BigInt(i.expiresAt),
     }));
-    const encodedJson = JSON.stringify(encoded);
+
     const txId = await this._submitToCircle(
       "batchAttest((address,bytes32,bytes32,uint256)[])",
-      [encodedJson]
+      [encoded],
+      ADDRESSES.batchAttestation
     );
-    const txHash = await this._pollForHash(txId);
-    return this._decodeBatchResult(txHash);
+    await this._pollForHash(txId);
+
+    // Per-item claimIds/successes are RETURN values of batchAttest, not emitted in the
+    // BatchIssued event, so they are not observable from a Circle fire-and-poll transaction.
+    // The indexer reconciles issued claims from ClaimIssued events. We report the batch as
+    // submitted; individual item failures cannot be detected from this side.
+    return {
+      claimIds:  new Array(inputs.length).fill("0x" + "0".repeat(64)) as `0x${string}`[],
+      successes: new Array(inputs.length).fill(true),
+    };
   }
 
   /**
@@ -111,22 +134,9 @@ export abstract class BaseAttestationService {
   async verify(subject: `0x${string}`, schemaId: `0x${string}`) {
     return publicClient.readContract({
       address:      ADDRESSES.passportVerifier!,
-      abi:          ATTESTATION_REGISTRY_ABI as unknown as Parameters<typeof publicClient.readContract>[0]["abi"],
+      abi:          PASSPORT_VERIFIER_ABI,
       functionName: "verify" as const,
       args:         [subject, schemaId],
-    });
-  }
-
-  async getClaims(subject: `0x${string}`, _schemaId: `0x${string}` | null) {
-    void _schemaId;
-    return publicClient.multicall({
-      multicallAddress: "0xcA11bde05977b3631167028862bE2a173976CA11" as `0x${string}`,
-      contracts: [{
-        address:      ADDRESSES.attestationRegistry!,
-        abi:          ATTESTATION_REGISTRY_ABI,
-        functionName: "getActiveClaim" as const,
-        args:         [subject, "0x" + "0".repeat(64) as `0x${string}`, "0x" + "0".repeat(64) as `0x${string}`],
-      }],
     });
   }
 
@@ -171,7 +181,7 @@ export abstract class BaseAttestationService {
     }
   }
 
-  private async _submitToCircle(abiFn: string, params: unknown[]): Promise<string> {
+  private async _submitToCircle(abiFn: string, params: unknown[], contractAddress: `0x${string}`): Promise<string> {
     if (!this.walletId) {
       throw Errors.IssuerNotConfigured(this.serviceName, `CIRCLE_${this.serviceName.toUpperCase()}_ISSUER_WALLET_ID`);
     }
@@ -185,7 +195,7 @@ export abstract class BaseAttestationService {
     const tx = await circleClient.createContractExecutionTransaction({
       walletId:             this.walletId,
       blockchain:           (process.env.ARC_BLOCKCHAIN_ENV || "ARC-TESTNET") as "ARC-TESTNET",
-      contractAddress:      ADDRESSES.attestationRegistry!,
+      contractAddress:      contractAddress,
       abiFunctionSignature: abiFn,
       abiParameters:        params as string[],
       fee:                  { type: "level", config: { feeLevel: "MEDIUM" } },
@@ -208,26 +218,5 @@ export abstract class BaseAttestationService {
       if (state === "FAILED")   throw Errors.TransactionFailed("pollForHash", `tx ${txId} FAILED`);
     }
     throw Errors.TransactionFailed("pollForHash", `tx ${txId} timed out after 18s`);
-  }
-
-  private async _decodeBatchResult(txHash: `0x${string}`) {
-    try {
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-      const batchLog = receipt.logs.find(
-        (l) => l.address.toLowerCase() === (ADDRESSES.attestationRegistry ?? "").toLowerCase()
-      );
-      if (!batchLog) return { claimIds: [], successes: [] };
-      const decoded = decodeEventLog({
-        abi:       ATTESTATION_REGISTRY_ABI as unknown as ReturnType<typeof parseAbiParameters> extends never ? never : Parameters<typeof decodeEventLog>[0]["abi"],
-        data:      batchLog.data,
-        topics:    batchLog.topics,
-      });
-      return {
-        claimIds:  ((decoded as unknown as { args: { claimIds: `0x${string}`[] } }).args.claimIds) ?? [],
-        successes: ((decoded as unknown as { args: { successes: boolean[] } }).args.successes) ?? [],
-      };
-    } catch {
-      return { claimIds: [], successes: [] };
-    }
   }
 }

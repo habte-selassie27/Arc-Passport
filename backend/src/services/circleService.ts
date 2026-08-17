@@ -11,7 +11,11 @@ export async function executeContractCall(
   feeLevel: "LOW" | "MEDIUM" | "HIGH" = "MEDIUM"
 ): Promise<string> {
   const circleClient = getCircleClient();
-  assertBlockchain("ARC-TESTNET");
+  // Per SECURITY-ROADMAP.md §25 / AGENTS.md §5: guard every submission against
+  // the configured chain. Never hardcode a chain here — a misconfigured
+  // ARC_BLOCKCHAIN_ENV must fail loudly, not silently route elsewhere.
+  const env = process.env.ARC_BLOCKCHAIN_ENV;
+  assertBlockchain(env === "ARC-MAINNET" ? "ARC-MAINNET" : "ARC-TESTNET");
 
   const tx = await circleClient.createContractExecutionTransaction({
     walletId,

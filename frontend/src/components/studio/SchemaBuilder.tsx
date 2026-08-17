@@ -1,13 +1,17 @@
 import { useState, useCallback, useRef } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { keccak256, encodePacked } from "viem";
 import { ADDRESSES } from "../../config/addresses";
 import { SCHEMA_REGISTRY_ABI } from "../../abis/SchemaRegistry";
 import { FieldBuilder, type FieldDef } from "./FieldBuilder";
 import { TxStatus } from "../shared/TxStatus";
 import { TransactionPreview } from "../shared/TransactionPreview";
-import { GasEstimate } from "../shared/GasEstimate";
 import { parseContractError } from "../../utils/parseContractError";
 import { toast } from "../shared/Toast";
+import { Field } from "../ui/Field";
+import { Input } from "../ui/Input";
+import { Button } from "../ui/Button";
+import { CodeBlock } from "../ui/CodeBlock";
 
 export function SchemaBuilder() {
   const [name, setName] = useState("");
@@ -17,6 +21,13 @@ export function SchemaBuilder() {
   const fieldsJson = JSON.stringify(fields.map((f) => ({ name: f.name, type: f.type })));
   const regArgs = [name, version, fieldsJson] as const;
   const canRegister = !!name && !!version && fields.length > 0 && fields.every((f) => f.name && f.type) && !!ADDRESSES.schemaRegistry;
+
+  const computedSchemaId = (() => {
+    if (!name || !version) return null;
+    const compact = JSON.stringify(fields.map((f) => ({ name: f.name, type: f.type })));
+    if (!compact) return null;
+    return keccak256(encodePacked(["string", "string", "string"], [name, version, compact]));
+  })();
 
   const simRequestRef = useRef<unknown | null>(null);
 
@@ -48,47 +59,77 @@ export function SchemaBuilder() {
       return;
     }
     writeContract(simRequestRef.current as Parameters<typeof writeContract>[0]);
-  }, [writeContract, name, version, fieldsJson, fields]);
+  }, [writeContract, fields]);
 
   const pending = isPending || isConfirming;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Schema Builder</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Define a custom claim schema. The schema ID is computed deterministically
-        from name + version + fields.
+    <div className="card">
+      <h3 className="display--medium t-lg" style={{ marginBottom: "var(--space-2)" }}>Schema Builder</h3>
+      <p className="t-sm c-muted" style={{ marginBottom: "var(--space-4)" }}>
+        Define a custom claim schema. The schema ID is computed deterministically from name + version + fields.
       </p>
 
-      <div className="space-y-3 mb-4">
-        <div>
-          <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Schema name</label>
-          <input
+      <div className="space-y-4" style={{ marginBottom: "var(--space-4)" }}>
+        <Field label="Schema name" htmlFor="studio-schema-name" helper="Use snake_case. e.g. arcpass_myschema">
+          <Input
+            id="studio-schema-name"
+            mono
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="arcpass_myschema"
-            className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
           />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Version</label>
-          <input
+        </Field>
+        <Field label="Version" htmlFor="studio-schema-version">
+          <Input
+            id="studio-schema-version"
+            mono
             value={version}
             onChange={(e) => setVersion(e.target.value)}
-            className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
           />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Fields</label>
+        </Field>
+        <div className="field">
+          <label className="field__label">Fields</label>
           <FieldBuilder fields={fields} onChange={setFields} />
         </div>
       </div>
 
-      <details className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-        <summary className="cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">Preview JSON</summary>
-        <pre className="mt-1 p-2 bg-gray-50 dark:bg-gray-900/50 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
-          {fieldsJson}
-        </pre>
+      {computedSchemaId && (
+        <div style={{ marginBottom: "var(--space-4)" }}>
+          <p className="eyebrow" style={{ marginBottom: "var(--space-1)" }}>Schema ID (live)</p>
+          {/* Show the computation: keccak256(abi.encodePacked(name, version, fieldsJson)) */}
+          <div className="schema-compute">
+            <div className="schema-compute__step">
+              <span className="merkle-leaf" aria-hidden="true" />
+              <span>name</span>
+              <span className="schema-compute__arrow">→</span>
+              <span className="schema-compute__value">{name || "(empty)"}</span>
+            </div>
+            <div className="schema-compute__step">
+              <span className="merkle-leaf" aria-hidden="true" />
+              <span>version</span>
+              <span className="schema-compute__arrow">→</span>
+              <span className="schema-compute__value">{version}</span>
+            </div>
+            <div className="schema-compute__step">
+              <span className="merkle-leaf" aria-hidden="true" />
+              <span>fieldsJson</span>
+              <span className="schema-compute__arrow">→</span>
+              <span className="schema-compute__value">{fieldsJson.length > 60 ? fieldsJson.slice(0, 57) + "..." : fieldsJson}</span>
+            </div>
+            <div className="schema-compute__step" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "var(--space-2)", marginTop: "var(--space-1)" }}>
+              <span className="merkle-leaf" aria-hidden="true" />
+              <span>keccak256(abi.encodePacked(...))</span>
+              <span className="schema-compute__arrow">→</span>
+              <span className="schema-compute__value" style={{ color: "var(--color-verified)" }}>{computedSchemaId}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <details style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-4)" }}>
+        <summary className="c-muted" style={{ cursor: "pointer" }}>▶ Preview JSON</summary>
+        <CodeBlock style={{ marginTop: "var(--space-2)" }}>{fieldsJson}</CodeBlock>
       </details>
 
       <TransactionPreview
@@ -101,24 +142,12 @@ export function SchemaBuilder() {
         onSimResult={handleSimResult}
       />
 
-      <GasEstimate
-        enabled={canRegister}
-        address={ADDRESSES.schemaRegistry}
-        abi={SCHEMA_REGISTRY_ABI}
-        functionName="registerSchema"
-        args={regArgs}
-      />
-
-      <button
-        onClick={handleRegister}
-        disabled={pending || !canRegister}
-        className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-all active:scale-[0.98] font-medium"
-      >
-        {pending ? "Registering..." : "Register Schema onchain"}
-      </button>
+      <Button type="button" block disabled={pending || !canRegister} loading={pending} onClick={handleRegister}>
+        Register Schema onchain
+      </Button>
 
       <TxStatus hash={hash} />
-      {error && <p className="text-red-600 dark:text-red-400 text-sm text-center mt-2">{parseContractError(error)}</p>}
+      {error && <p className="c-danger t-sm text-center" style={{ marginTop: "var(--space-2)" }}>{parseContractError(error)}</p>}
     </div>
   );
 }

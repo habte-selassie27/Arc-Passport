@@ -10,3 +10,10 @@ export function asAddress(v: string): `0x${string}` {
 export function asSchemaId(v: string): `0x${string}` {
   return v as `0x${string}`;
 }
+
+const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+/** Returns true if the value is a valid 20-byte hex address. */
+export function isValidAddress(v: string): v is `0x${string}` {
+  return ETH_ADDRESS_RE.test(v);
+}

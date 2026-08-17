@@ -12,20 +12,14 @@ import issuerRoutes from "./routes/issuer.js";
 import { startClaimIndexer } from "./indexer/claimIndexer.js";
 import { startGasPricePolling, startBalancePolling, startEventWatchers } from "./monitoring/eventMonitor.js";
 import { RETENTION_POLICY } from "./config/retention.js";
-import kycRoutesV1 from "./routes/v1/kyc.js";
-import credentialsRoutesV1 from "./routes/v1/credentials.js";
-import daoRoutesV1 from "./routes/v1/dao.js";
-import identityRoutesV1 from "./routes/v1/identity.js";
-import reputationRoutesV1 from "./routes/v1/reputation.js";
-import employmentRoutesV1 from "./routes/v1/employment.js";
-import educationRoutesV1 from "./routes/v1/education.js";
-import socialRoutesV1 from "./routes/v1/social.js";
-import customRoutesV1 from "./routes/v1/custom.js";
-import passportRoutesV1 from "./routes/v1/passport.js";
+import serviceRoutesV1 from "./routes/v1/service.js";
 import bulkRoutesV1 from "./routes/v1/bulk.js";
 import analyticsRoutesV1 from "./routes/v1/analytics.js";
 import settingsRoutesV1 from "./routes/v1/settings.js";
+import notificationsRoutesV1 from "./routes/v1/notifications.js";
+import requestsRoutesV1 from "./routes/v1/requests.js";
 import openapiRoutesV1 from "./routes/v1/openapi.js";
+import { startExpirySweep } from "./services/notificationService.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3001", 10);
@@ -69,19 +63,12 @@ app.use("/passport", passportRoutes);
 app.use("/schema", schemaRoutes);
 app.use("/issuer", issuerRoutes);
 
-app.use("/v1/kyc", v1WriteLimiter, kycRoutesV1);
-app.use("/v1/credentials", v1WriteLimiter, credentialsRoutesV1);
-app.use("/v1/dao", v1WriteLimiter, daoRoutesV1);
-app.use("/v1/identity", v1WriteLimiter, identityRoutesV1);
-app.use("/v1/reputation", v1WriteLimiter, reputationRoutesV1);
-app.use("/v1/employment", v1WriteLimiter, employmentRoutesV1);
-app.use("/v1/education", v1WriteLimiter, educationRoutesV1);
-app.use("/v1/social", v1WriteLimiter, socialRoutesV1);
-app.use("/v1/custom", v1WriteLimiter, customRoutesV1);
-app.use("/v1/passport", passportRoutesV1);
+app.use("/v1", v1WriteLimiter, serviceRoutesV1);
 app.use("/v1/bulk", bulkRoutesV1);
 app.use("/v1/analytics", analyticsRoutesV1);
 app.use("/v1/settings", settingsRoutesV1);
+app.use("/v1/notifications", notificationsRoutesV1);
+app.use("/v1/requests", requestsRoutesV1);
 app.use("/v1", openapiRoutesV1);
 
 app.use(errorHandler);
@@ -90,6 +77,7 @@ if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {
     console.log(`ArcPass backend listening on port ${PORT}`);
     startClaimIndexer();
+    startExpirySweep();
     startGasPricePolling(30_000);
     startBalancePolling(300_000);
     startEventWatchers();

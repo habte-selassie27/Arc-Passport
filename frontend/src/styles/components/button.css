@@ -1,0 +1,108 @@
+/* ============================================================
+   Buttons — primary / ghost / danger / success / link
+   ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-out-quart),
+    border-color var(--duration-fast) var(--ease-out-quart),
+    color var(--duration-fast) var(--ease-out-quart),
+    transform var(--duration-fast) var(--ease-out-quart),
+    opacity var(--duration-fast) var(--ease-out-quart);
+  user-select: none;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Primary — Arc blue */
+.btn--primary {
+  background: var(--color-arc-primary);
+  color: #fff;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-arc-dim);
+  text-decoration: none;
+}
+
+/* Ghost / secondary */
+.btn--ghost {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-on-surface);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  border-color: var(--color-border-glow);
+  background: var(--color-surface-1);
+  text-decoration: none;
+}
+
+/* Danger */
+.btn--danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: var(--color-danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  text-decoration: none;
+}
+
+/* Success/confirm — ONLY for "Confirm/Submit" after simulation passes */
+.btn--success {
+  background: rgba(0, 229, 160, 0.12);
+  border-color: rgba(0, 229, 160, 0.35);
+  color: var(--color-verified);
+}
+
+.btn--success:hover:not(:disabled) {
+  background: rgba(0, 229, 160, 0.2);
+  text-decoration: none;
+}
+
+/* Small size */
+.btn--sm {
+  padding: 6px 12px;
+  font-size: var(--text-xs);
+}
+
+/* Full width — single-column mobile forms only */
+.btn--block {
+  width: 100%;
+}
+
+/* Text link button */
+.btn--link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-sm);
+  color: var(--color-arc-primary);
+  border-radius: var(--radius-sm);
+}
+
+.btn--link:hover {
+  text-decoration: underline;
+}

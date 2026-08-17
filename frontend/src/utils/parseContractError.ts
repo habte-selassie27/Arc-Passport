@@ -25,5 +25,5 @@ export function parseContractError(err: unknown): string {
     }
   }
 
-  return err instanceof BaseError ? (err.shortMessage ?? err.message) : "Unexpected error";
+  return err.shortMessage ?? err.message;
 }

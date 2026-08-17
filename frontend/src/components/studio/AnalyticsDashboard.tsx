@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { StatCard } from "../ui/StatCard";
 
 interface EventAnalytics {
   lastMinute: number;
@@ -11,29 +12,40 @@ interface AnalyticsData {
   generatedAt: number;
 }
 
-const SERVICE_NAMES = [
-  "identity", "kyc", "credentials", "dao",
-  "reputation", "employment", "education", "social", "custom",
-] as const;
-
 export function AnalyticsDashboard() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLive, setIsLive] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchAnalytics = async () => {
       try {
         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001"}/v1/analytics`);
         const json = await res.json();
-        if (json.success) setData(json.data);
-        else setError("Failed to load analytics");
-      } catch (err) {
-        setError((err as Error).message);
+        if (mounted && json.success) {
+          setData(json.data);
+          setIsLive(true);
+          setError(null);
+        } else if (mounted) {
+          setError("Failed to load analytics");
+          setIsLive(false);
+        }
+      } catch {
+        if (mounted) {
+          setError("Backend offline");
+          setIsLive(false);
+        }
       }
     };
+
     fetchAnalytics();
     const interval = setInterval(fetchAnalytics, 30_000);
-    return () => clearInterval(interval);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const claimIssued = data?.events?.ClaimIssued ?? { lastMinute: 0, lastHour: 0, total: 0 };
@@ -41,60 +53,76 @@ export function AnalyticsDashboard() {
   const schemasRegistered = data?.events?.SchemaRegistered ?? { lastMinute: 0, lastHour: 0, total: 0 };
   const roleGrants = data?.events?.RoleGranted ?? { lastMinute: 0, lastHour: 0, total: 0 };
 
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6 space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Analytics</h3>
-      {error && <p className="text-sm text-red-500">{error}</p>}
+  const displayTotal = (val: number) => (error ? "—" : val);
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Claims Issued (total)" value={claimIssued.total} accent="blue" />
-        <StatCard label="Claims Revoked (total)" value={claimRevoked.total} accent="red" />
-        <StatCard label="Schemas Registered" value={schemasRegistered.total} accent="purple" />
-        <StatCard label="Role Grants" value={roleGrants.total} accent="amber" />
+  return (
+    <div className="card" style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
+      <div className="flex items-center justify-between">
+        <h3 className="display--medium t-lg">Analytics</h3>
+        <span className="flex items-center gap-2 mono t-xs c-subtle">
+          <span
+            className={`live-dot live-dot--${isLive ? "on" : "off"}`}
+            style={{ display: "inline-block" }}
+            aria-hidden="true"
+          />
+          {isLive ? "Live" : "Offline"}
+        </span>
       </div>
 
-      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Real-time Activity</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+      {error && (
+        <div
+          role="status"
+          className="chip chip--pending"
+          style={{ alignSelf: "flex-start", textTransform: "none", letterSpacing: "0.04em" }}
+        >
+          ⚠ {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="Claims issued" value={displayTotal(claimIssued.total)} sub="Total" />
+        <StatCard label="Claims revoked" value={displayTotal(claimRevoked.total)} tone="danger" sub="Total" />
+        <StatCard label="Schemas registered" value={displayTotal(schemasRegistered.total)} sub="Total" />
+        <StatCard label="Role grants" value={displayTotal(roleGrants.total)} tone="warn" sub="Total" />
+      </div>
+
+      <div style={{ background: "var(--color-surface-1)", borderRadius: "var(--radius-lg)", padding: "var(--space-5)" }}>
+        <h4 className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>
+          Real-time activity
+        </h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <span className="text-gray-500 dark:text-gray-400">Claims/min</span>
-            <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{claimIssued.lastMinute}</p>
+            <p className="t-xs c-subtle">Claims/min</p>
+            <p className="mono t-2xl c-primary" style={{ lineHeight: 1.2, marginTop: "var(--space-1)" }}>
+              {displayTotal(claimIssued.lastMinute)}
+            </p>
           </div>
           <div>
-            <span className="text-gray-500 dark:text-gray-400">Revocations/min</span>
-            <p className="text-xl font-bold text-red-600 dark:text-red-400">{claimRevoked.lastMinute}</p>
+            <p className="t-xs c-subtle">Revocations/min</p>
+            <p className="mono t-2xl c-danger" style={{ lineHeight: 1.2, marginTop: "var(--space-1)" }}>
+              {displayTotal(claimRevoked.lastMinute)}
+            </p>
           </div>
           <div>
-            <span className="text-gray-500 dark:text-gray-400">Claims/hour</span>
-            <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{claimIssued.lastHour}</p>
+            <p className="t-xs c-subtle">Claims/hour</p>
+            <p className="mono t-2xl c-primary" style={{ lineHeight: 1.2, marginTop: "var(--space-1)" }}>
+              {displayTotal(claimIssued.lastHour)}
+            </p>
           </div>
           <div>
-            <span className="text-gray-500 dark:text-gray-400">Schemas/hour</span>
-            <p className="text-xl font-bold text-purple-600 dark:text-purple-400">{schemasRegistered.lastHour}</p>
+            <p className="t-xs c-subtle">Schemas/hour</p>
+            <p className="mono t-2xl" style={{ lineHeight: 1.2, marginTop: "var(--space-1)", color: "var(--color-warn)" }}>
+              {displayTotal(schemasRegistered.lastHour)}
+            </p>
           </div>
         </div>
       </div>
 
       {data?.generatedAt && (
-        <p className="text-xs text-gray-400 dark:text-gray-500">
+        <p className="t-xs c-subtle">
           Last updated: {new Date(data.generatedAt).toLocaleTimeString()}
         </p>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
-  const colors: Record<string, string> = {
-    blue: "text-blue-600 dark:text-blue-400",
-    red: "text-red-600 dark:text-red-400",
-    purple: "text-purple-600 dark:text-purple-400",
-    amber: "text-amber-600 dark:text-amber-400",
-  };
-  return (
-    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className={`text-2xl font-bold ${colors[accent] ?? "text-gray-900 dark:text-white"}`}>{value}</p>
     </div>
   );
 }

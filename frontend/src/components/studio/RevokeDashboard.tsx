@@ -5,7 +5,13 @@ import { ATTESTATION_REGISTRY_ABI } from "../../abis/AttestationRegistry";
 import { TxStatus } from "../shared/TxStatus";
 import { parseContractError } from "../../utils/parseContractError";
 import { toast } from "../shared/Toast";
-import { AddressDisplay } from "../shared/AddressDisplay";
+import { AddressDisplay } from "../ui/AddressDisplay";
+import { Card } from "../ui/Card";
+import { Field } from "../ui/Field";
+import { Input } from "../ui/Input";
+import { Button } from "../ui/Button";
+import { StatusChip } from "../ui/StatusChip";
+import { schemaNameForId } from "../../utils/schemaNames";
 
 export function RevokeDashboard() {
   const [search, setSearch] = useState("");
@@ -57,79 +63,82 @@ export function RevokeDashboard() {
   const pending = revokePending || revokeConfirming;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6 space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Revoke Manager</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400">
+    <Card>
+      <h3 className="display--medium t-lg" style={{ marginBottom: "var(--space-2)" }}>Revoke Manager</h3>
+      <p className="t-sm c-muted" style={{ marginBottom: "var(--space-4)" }}>
         Enter a claim ID to look up its details and revoke it. You must hold REVOKER_ROLE on the AttestationRegistry.
       </p>
 
       <div className="flex gap-2">
-        <input
+        <Input
+          mono
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="0x... claimId"
-          className="flex-1 px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-mono"
           onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
+          style={{ flex: 1 }}
         />
-        <button
-          onClick={handleLookup}
-          disabled={lookupLoading || !search.trim()}
-          className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium text-sm transition-colors"
-        >
-          {lookupLoading ? "..." : "Look up"}
-        </button>
+        <Button variant="primary" onClick={handleLookup} disabled={lookupLoading || !search.trim()} loading={lookupLoading}>
+          Look up
+        </Button>
       </div>
 
       {lookupError && (
-        <div className="text-xs text-red-600 dark:text-red-400 p-3 bg-red-50 dark:bg-red-900/20 rounded">
-          Claim not found or chain error
+        <div className="sim-box--failed sim-box" style={{ marginTop: "var(--space-4)" }} role="alert">
+          <p className="sim-box__row"><span className="sim-box__fail" aria-hidden="true">✗</span> Claim not found or chain error</p>
         </div>
       )}
 
       {claimData && (
-        <div className="rounded border border-gray-200 dark:border-gray-700 p-3 space-y-2 text-xs">
-          <div className="flex justify-between items-center">
-            <span className="font-medium text-gray-900 dark:text-white">Claim Details</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                revoked
-                  ? "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300"
-                  : "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300"
-              }`}
-            >
-              {revoked ? "Revoked" : "Active"}
-            </span>
+        <Card verified={!revoked} revoked={revoked} style={{ marginTop: "var(--space-4)", padding: "var(--space-5)" }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-3)" }}>
+            <p className="card__title">Claim details</p>
+            <StatusChip status={revoked ? "REVOKED" : "VALID"} />
           </div>
-          <div className="space-y-1 text-gray-600 dark:text-gray-400">
-            <p><span className="text-gray-500">Subject:</span> <AddressDisplay address={claimData[1] as `0x${string}`} /></p>
-            <p><span className="text-gray-500">Schema ID:</span> <span className="font-mono">{(claimData[2] as string).slice(0, 16)}...</span></p>
-            <p><span className="text-gray-500">Issuer:</span> <AddressDisplay address={claimData[3] as `0x${string}`} /></p>
-            <p><span className="text-gray-500">Issued:</span> {new Date(Number(claimData[5]) * 1000).toLocaleString()}</p>
+
+          <div className="space-y-0">
+            <div className="data-row">
+              <span className="data-row__label">Subject</span>
+              <span className="data-row__value"><AddressDisplay address={claimData[1] as `0x${string}`} /></span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Schema</span>
+              <span className="data-row__value mono t-xs">{schemaNameForId(claimData[2] as string)}</span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Issuer</span>
+              <span className="data-row__value"><AddressDisplay address={claimData[3] as `0x${string}`} /></span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Issued</span>
+              <span className="data-row__value">{new Date(Number(claimData[5]) * 1000).toLocaleString()}</span>
+            </div>
             {(claimData[6] as bigint) > 0n && (
-              <p><span className="text-gray-500">Expires:</span> {new Date(Number(claimData[6]) * 1000).toLocaleString()}</p>
+              <div className="data-row">
+                <span className="data-row__label">Expires</span>
+                <span className="data-row__value">{new Date(Number(claimData[6]) * 1000).toLocaleString()}</span>
+              </div>
             )}
           </div>
 
           {!revoked && (
-            <button
-              onClick={handleRevoke}
-              disabled={pending}
-              className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 transition-all active:scale-[0.98] font-medium text-sm"
-            >
-              {pending ? "Revoking..." : "Revoke This Claim"}
-            </button>
+            <div style={{ marginTop: "var(--space-4)", borderTop: "1px solid var(--color-border)", paddingTop: "var(--space-4)" }}>
+              <Button variant="danger" block loading={pending} disabled={pending} onClick={handleRevoke}>
+                Revoke this credential
+              </Button>
+            </div>
           )}
-        </div>
+        </Card>
       )}
 
       {!lookupKey && !claimData && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 p-3 bg-gray-50 dark:bg-gray-900/50 rounded">
+        <div className="t-xs c-subtle" style={{ marginTop: "var(--space-4)", background: "var(--color-surface-1)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-3) var(--space-4)" }}>
           Enter a claim ID above and click "Look up" to fetch claim details.
         </div>
       )}
 
       <TxStatus hash={revokeHash} />
-      {revokeError && <p className="text-red-600 dark:text-red-400 text-xs text-center">{parseContractError(revokeError)}</p>}
-    </div>
+      {revokeError && <p className="c-danger t-xs text-center" style={{ marginTop: "var(--space-2)" }}>{parseContractError(revokeError)}</p>}
+    </Card>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 type ToastType = "success" | "error" | "info";
 
@@ -22,17 +22,17 @@ const ICON: Record<ToastType, string> = {
 };
 
 const STYLES: Record<ToastType, string> = {
-  success: "bg-green-600 text-white",
-  error: "bg-red-600 text-white",
-  info: "bg-blue-600 text-white",
+  success: "toast--success",
+  error: "toast--error",
+  info: "toast--info",
 };
 
 export function ToastContainer() {
   const [items, setItems] = useState<ToastItem[]>([]);
-  let idCounter = 0;
+  const idCounterRef = useRef(0);
 
   const add = useCallback((type: ToastType, message: string) => {
-    const id = ++idCounter;
+    const id = ++idCounterRef.current;
     setItems((prev) => [...prev, { id, type, message, exiting: false }]);
     setTimeout(() => {
       setItems((prev) => prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)));
@@ -44,21 +44,28 @@ export function ToastContainer() {
 
   useEffect(() => {
     addToastFn = add;
-    return () => { addToastFn = null; };
+    return () => {
+      addToastFn = null;
+    };
   }, [add]);
 
   if (items.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div
+      className="fixed top-4 right-4 z-[100] flex flex-col gap-2"
+      style={{ maxWidth: "min(24rem, calc(100vw - 2rem))" }}
+      role="status"
+      aria-live="polite"
+    >
       {items.map((item) => (
         <div
           key={item.id}
-          className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${STYLES[item.type]} ${
-            item.exiting ? "animate-slide-out-right" : "animate-slide-in-right"
-          }`}
+          className={`toast ${STYLES[item.type]} ${item.exiting ? "toast--exit" : "toast--enter"}`}
         >
-          <span className="font-bold text-base leading-none">{ICON[item.type]}</span>
+          <span className="font-bold" aria-hidden="true">
+            {ICON[item.type]}
+          </span>
           <span>{item.message}</span>
         </div>
       ))}

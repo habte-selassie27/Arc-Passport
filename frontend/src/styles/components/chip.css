@@ -1,0 +1,81 @@
+/* ============================================================
+   Status chips — VALID / REVOKED / PENDING / EXPIRED
+   Also generic mono badges (service, counts).
+   ============================================================ */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.chip--valid {
+  background: rgba(0, 229, 160, 0.1);
+  border-color: rgba(0, 229, 160, 0.3);
+  color: var(--color-verified);
+}
+
+.chip--revoked {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--color-danger);
+}
+
+.chip--pending {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: var(--color-warn);
+}
+
+.chip--expired {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: var(--color-muted);
+}
+
+.chip--muted {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-subtle);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+.chip--configured {
+  background: rgba(0, 229, 160, 0.1);
+  border-color: rgba(0, 229, 160, 0.3);
+  color: var(--color-verified);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+/* Dot indicators inside chips / badges */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot--on { background: var(--color-verified); }
+.dot--off { background: var(--color-subtle); }
+
+/* Live indicator (studio realtime row) */
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.live-dot--on { background: var(--color-verified); }
+.live-dot--off { background: var(--color-subtle); }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { IPassportVerifier, VerificationResult } from "../../core/interfaces/IPassportVerifier.sol";
-import { REPUTATION_SCORE_ID } from "../schemas/ReputationSchemas.sol";
+import { REPUTATION_SCORE_ID } from "../schemas/SchemaIds.sol";
 
 error ArcPass__ScoreBelowThreshold(address subject, uint256 score, uint256 required);
 
