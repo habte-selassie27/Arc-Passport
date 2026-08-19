@@ -160,26 +160,49 @@ async function syncLogs(from: bigint, to: bigint) {
   if (!ADDRESSES.attestationRegistry) return;
 
   const CHUNK = 5000n;
+  const DELAY_MS = 1000; // 1s between requests to avoid rate limits
   let start = from;
 
   while (start <= to) {
     const end = start + CHUNK - 1n > to ? to : start + CHUNK - 1n;
 
-    try {
-      const logs = await publicClient.getLogs({
-        address: ADDRESSES.attestationRegistry,
-        fromBlock: start,
-        toBlock: end,
-      });
+    let retries = 0;
+    const maxRetries = 3;
 
-      for (const log of logs) {
-        processLog(log);
+    while (retries <= maxRetries) {
+      try {
+        const logs = await publicClient.getLogs({
+          address: ADDRESSES.attestationRegistry,
+          fromBlock: start,
+          toBlock: end,
+        });
+
+        for (const log of logs) {
+          processLog(log);
+        }
+        break; // success — move to next chunk
+      } catch (err) {
+        const msg = (err as Error).message;
+        const isRateLimit = msg.includes("rate limit") || msg.includes("exceeds defined limit");
+        retries++;
+
+        if (isRateLimit && retries <= maxRetries) {
+          const backoff = DELAY_MS * Math.pow(2, retries);
+          console.log(`[EAS Indexer] Rate limited on ${start}-${end}, retrying in ${backoff}ms (${retries}/${maxRetries})`);
+          await new Promise((r) => setTimeout(r, backoff));
+        } else {
+          console.error(`[EAS Indexer] Error fetching logs ${start}-${end}:`, msg);
+          break;
+        }
       }
-    } catch (err) {
-      console.error(`[EAS Indexer] Error fetching logs ${start}-${end}:`, (err as Error).message);
     }
 
     start = end + 1n;
+
+    // Delay between chunks to avoid rate limiting
+    if (start <= to) {
+      await new Promise((r) => setTimeout(r, DELAY_MS));
+    }
   }
 }
 
