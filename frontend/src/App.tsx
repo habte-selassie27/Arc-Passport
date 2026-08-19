@@ -1,12 +1,17 @@
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { GuidePage } from "./pages/Guide";
 import { HomePage } from "./pages/Home";
 import { RegisterPage } from "./pages/Register";
-import { SchemaPage } from "./pages/Schema";
 import { PassportPage } from "./pages/Passport";
-import { IssuerPage } from "./pages/Issuer";
 import { VerifyPage } from "./pages/Verify";
-import { StudioPage } from "./pages/studio/Studio";
+import { DeveloperVerifyPage } from "./pages/DeveloperVerify";
+import { ScorePage } from "./pages/Score";
+import { EASPage } from "./pages/EAS";
+import { HumanNodePage } from "./pages/HumanNode";
+import { Web2ProofPage } from "./pages/Web2Proof";
+import { OpenID3IdentityPage } from "./pages/OpenID3Identity";
+import { ZKPassportPage } from "./pages/ZKPassport";
+import { StudioLayout } from "./pages/studio/StudioLayout";
 import { ServiceVerifyPage } from "./pages/services/ServiceVerify";
 import { Navbar } from "./components/ui/Navbar";
 import { ToastContainer } from "./components/shared/Toast";
@@ -49,14 +54,26 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/guide" element={<GuidePage />} />
               <Route path="/register" element={<RegisterPage />} />
-              <Route path="/schema" element={<SchemaPage />} />
               <Route path="/passport" element={<PassportPage />} />
               <Route path="/passport/:address" element={<PassportPage />} />
-              <Route path="/issue" element={<IssuerPage />} />
               <Route path="/verify" element={<VerifyPage />} />
-              <Route path="/studio/*" element={<StudioPage />} />
+              <Route path="/score" element={<ScorePage />} />
+              <Route path="/score/:address" element={<ScorePage />} />
+              <Route path="/zk" element={<ZKPassportPage />} />
+              <Route path="/eas" element={<EASPage />} />
+              <Route path="/eas/schemas/:uid" element={<EASPage />} />
+              <Route path="/eas/attestations/:uid" element={<EASPage />} />
+              <Route path="/eas/verify/:address" element={<EASPage />} />
+              <Route path="/human-node" element={<HumanNodePage />} />
+          <Route path="/web2-proof" element={<Web2ProofPage />} />
+          <Route path="/openid3" element={<OpenID3IdentityPage />} />
+              <Route path="/developer/verify" element={<DeveloperVerifyPage />} />
               <Route path="/services/:service" element={<ServiceVerifyPage />} />
               <Route path="/services/:service/:address" element={<ServiceVerifyPage />} />
+              {/* Legacy redirects */}
+              <Route path="/issue" element={<Navigate to="/studio/credentials/issue" replace />} />
+              <Route path="/schema" element={<Navigate to="/studio/schemas" replace />} />
+              <Route path="/studio/*" element={<StudioLayout />} />
             </Routes>
           </main>
           <Footer />

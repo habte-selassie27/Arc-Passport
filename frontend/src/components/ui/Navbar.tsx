@@ -5,20 +5,22 @@ import { WalletChip } from "./WalletChip";
 
 const NAV_LINKS = [
   { to: "/", label: "Home", exact: true },
-  { to: "/guide", label: "Guide" },
-  { to: "/register", label: "Register" },
-  { to: "/schema", label: "Schema" },
   { to: "/passport", label: "Passport" },
+  { to: "/score", label: "Score" },
+  { to: "/zk", label: "ZK" },
+  { to: "/eas", label: "EAS" },
+  { to: "/human-node", label: "Humanode" },
+  { to: "/web2-proof", label: "Web2 Proof" },
+  { to: "/openid3", label: "Identity" },
   { to: "/verify", label: "Verify" },
-  { to: "/issue", label: "Issue" },
   { to: "/studio", label: "Studio" },
 ];
 
 export function Navbar() {
   const { pathname } = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const inStudio = pathname.startsWith("/studio");
 
-  // Close the drawer on navigation and lock body scroll while open
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
@@ -30,7 +32,6 @@ export function Navbar() {
     };
   }, [drawerOpen]);
 
-  // Close drawer on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setDrawerOpen(false);
@@ -40,7 +41,7 @@ export function Navbar() {
   }, []);
 
   return (
-    <nav className="nav" aria-label="Main">
+    <nav className={`nav ${inStudio ? "nav--hidden" : ""}`} aria-label="Main">
       <div className="nav__inner">
         <Link to="/" className="nav__brand" aria-label="ArcPass home">
           <LogoMark size={22} />

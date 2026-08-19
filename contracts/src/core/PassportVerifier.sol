@@ -5,21 +5,46 @@ import "./interfaces/IPassportVerifier.sol";
 import "./interfaces/IAttestationRegistry.sol";
 import "./errors/ArcPassErrors.sol";
 
-/// @title PassportVerifier
-/// @notice Stateless verification contract for ArcPass claims. Reads from AttestationRegistry.
-///         NOT proxied (no state to migrate — if it needs updating, redeploy and update verifiers).
-///
-/// @dev    verify() iterates all active issuers looking for a valid claim for (subject, schemaId).
-///         verifyField() enables Merkle-based selective disclosure: the subject presents only
-///         the field they wish to disclose plus a Merkle proof, without revealing other fields.
-contract PassportVerifier is IPassportVerifier {
-    IAttestationRegistry public attestationRegistry;
+/// @dev Forward declarations for score registry views
+interface IScoreRegistryView {
+    function getScore(address subject, uint16 scorerId)
+        external view returns (uint16 score, bool isValid, bool isHuman);
+    function isHuman(address subject) external view returns (bool);
+}
 
-    /// @notice Construct the verifier with the AttestationRegistry address.
-    /// @param  _attestationRegistry  The address of the AttestationRegistry contract.
-    constructor(address _attestationRegistry) {
+interface IScorerRegistryView {
+    function scorers(uint16 scorerId) external view returns (
+        address owner, string memory name, uint16 threshold, bool active
+    );
+    function getRequireAll(uint16 scorerId) external view returns (bytes32[] memory);
+}
+
+/// @title PassportVerifier
+/// @notice Stateless verification contract for ArcPass claims.
+///         Reads from AttestationRegistry. Optionally supports Humanity Score via ScoreRegistry.
+///
+/// @dev    Score registries are optional — pass address(0) to either to disable score features.
+///         Existing functionality (verify, verifyMulti, verifyField) works regardless.
+contract PassportVerifier is IPassportVerifier {
+    IAttestationRegistry public immutable attestationRegistry;
+    IScoreRegistryView public immutable scoreRegistry;
+    IScorerRegistryView public immutable scorerRegistry;
+    bool public immutable hasScoreSupport;
+
+    /// @notice Construct the verifier with registry addresses.
+    /// @param  _attestationRegistry  The AttestationRegistry address (required).
+    /// @param  _scoreRegistry        The ScoreRegistry address (address(0) = no score support).
+    /// @param  _scorerRegistry       The ScorerRegistry address (address(0) = no score support).
+    constructor(
+        address _attestationRegistry,
+        address _scoreRegistry,
+        address _scorerRegistry
+    ) {
         if (_attestationRegistry == address(0)) revert ArcPass__ZeroAddress();
         attestationRegistry = IAttestationRegistry(_attestationRegistry);
+        scoreRegistry = IScoreRegistryView(_scoreRegistry);
+        scorerRegistry = IScorerRegistryView(_scorerRegistry);
+        hasScoreSupport = _scoreRegistry != address(0) && _scorerRegistry != address(0);
     }
 
     /// @inheritdoc IPassportVerifier
@@ -75,11 +100,44 @@ contract PassportVerifier is IPassportVerifier {
         return computedRoot == c.dataCommitment;
     }
 
-    /// @notice Compute a Merkle root from a leaf, proof, and leaf index.
-    /// @param  leaf      The leaf hash.
-    /// @param  proof     The sibling hashes along the path to the root.
-    /// @param  index     The leaf's index in the tree.
-    /// @return root      The computed root hash.
+    /// @notice Returns the on-chain committed score for a subject under a given scorer.
+    function getScore(address subject, uint16 scorerId)
+        external view
+        returns (uint16 score_, bool isValid, bool isHuman_)
+    {
+        require(hasScoreSupport, "Score support not configured");
+        return scoreRegistry.getScore(subject, scorerId);
+    }
+
+    /// @notice Returns true if subject passes a custom scorer's threshold
+    ///         AND all required schemas are valid.
+    function passesScorer(address subject, uint16 scorerId)
+        external view
+        returns (bool passes, string memory reason)
+    {
+        require(hasScoreSupport, "Score support not configured");
+
+        if (scorerId == 0) {
+            bool h = scoreRegistry.isHuman(subject);
+            return h ? (true, "") : (false, "Below humanity threshold");
+        }
+
+        (, , uint16 threshold, bool active) = scorerRegistry.scorers(scorerId);
+        if (!active) return (false, "Scorer is inactive");
+
+        bytes32[] memory required = scorerRegistry.getRequireAll(scorerId);
+        for (uint256 i = 0; i < required.length; i++) {
+            VerificationResult memory vr = this.verify(subject, required[i]);
+            if (!vr.valid) return (false, "Missing required schema");
+        }
+
+        (uint16 score_, bool isValid, ) = scoreRegistry.getScore(subject, scorerId);
+        if (!isValid) return (false, "Score not found or expired");
+        if (score_ < threshold) return (false, "Score below threshold");
+
+        return (true, "");
+    }
+
     function _computeMerkleRoot(
         bytes32 leaf,
         bytes32[] memory proof,
@@ -96,8 +154,6 @@ contract PassportVerifier is IPassportVerifier {
         }
     }
 
-    /// @notice Get the active claimId for (subject, schemaId, issuer) via typed interface call.
-    /// @dev    Uses the IAttestationRegistry interface directly instead of raw staticcall.
     function _getActiveClaim(
         address subject,
         bytes32 schemaId,

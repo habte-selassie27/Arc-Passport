@@ -242,23 +242,20 @@ export function GuidePage() {
             when needed.
           </p>
           <ol style={{ ...bodyStyle, paddingLeft: "var(--space-5)", listStyle: "decimal" }}>
-            <li>Click <strong style={strongStyle}>Issue</strong> in the navigation.</li>
+            <li>Click <strong style={strongStyle}>Issuer</strong> in the navigation.</li>
             <li>Your wallet will prompt you to sign a message to verify you are an issuer.</li>
             <li>
-              Once verified, you can issue attestations by filling in the subject address, schema,
-              and data.
+              Once verified, you can issue attestations, manage schemas, revoke claims,
+              and review credential requests from the Issuer Dashboard.
             </li>
             <li>
-              Use the Studio for advanced features: bulk CSV issuance, schema templates, and
-              per-service analytics.
+              Use Bulk Issue for CSV batch issuance, Templates for pre-built schema definitions,
+              and Settings to check your issuer wallet configuration.
             </li>
           </ol>
           <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
-            <Link to="/issue">
-              <Button variant="primary" size="sm">Open Issuer Dashboard</Button>
-            </Link>
             <Link to="/studio">
-              <Button variant="ghost" size="sm">Open Studio</Button>
+              <Button variant="primary" size="sm">Open Issuer Dashboard</Button>
             </Link>
           </div>
         </Step>

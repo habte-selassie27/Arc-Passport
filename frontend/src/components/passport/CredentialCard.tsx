@@ -1,16 +1,56 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "../ui/Card";
 import { StatusChip } from "../ui/StatusChip";
 import { AddressDisplay } from "../ui/AddressDisplay";
+import { SelectiveDisclosure } from "./SelectiveDisclosure";
 import type { ActiveClaim } from "../../types/passport";
+import type { ClaimFieldClassification, FieldProof } from "../../hooks/useFieldProof";
 
 interface CredentialCardProps {
   claim: ActiveClaim;
   schemaName?: string;
+  /** Field classifications fetched by the Passport page (optional). */
+  fields?: ClaimFieldClassification[];
+  /** Called when user clicks "Disclose" on a PRIVATE field. */
+  onRequestProof?: (fieldName: string) => void;
+  /** The generated proof (set after onRequestProof resolves). */
+  proofResult?: FieldProof | null;
+  /** True while a proof is being fetched. */
+  proofLoading?: boolean;
 }
 
-export function CredentialCard({ claim, schemaName }: CredentialCardProps) {
+function ClassificationBadge({ classification }: { classification: string }) {
+  const cls = classification.toLowerCase();
+  return (
+    <span className={`badge badge--${cls}`}>
+      {cls === "private" && <span className="lock-icon" aria-label="Private">🔒</span>}
+      {classification}
+    </span>
+  );
+}
+
+export function CredentialCard({
+  claim,
+  schemaName,
+  fields,
+  onRequestProof,
+  proofResult,
+  proofLoading,
+}: CredentialCardProps) {
   const valid = claim.valid;
+  const [disclosingField, setDisclosingField] = useState<
+    (ClaimFieldClassification & { value: unknown }) | null
+  >(null);
+
+  const handleProofReady = (fieldName: string) => {
+    if (proofResult && proofResult.field.name === fieldName) {
+      setDisclosingField({
+        ...proofResult.field,
+        value: proofResult.field.value,
+      });
+    }
+  };
 
   return (
     <Card verified={valid} revoked={!valid} style={{ padding: "var(--space-4) var(--space-5)" }}>
@@ -35,7 +75,44 @@ export function CredentialCard({ claim, schemaName }: CredentialCardProps) {
           <AddressDisplay address={claim.claimId} />
         </span>
       </div>
-      {/* Commitment hash — the on-chain data commitment (Merkle root) */}
+
+      {/* Field classifications */}
+      {fields && fields.length > 0 && (
+        <div style={{ marginTop: "var(--space-3)" }}>
+          <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-1)" }}>Fields</p>
+          <div className="flex flex-col gap-1">
+            {fields.map((f) => (
+              <div key={f.name} className="flex items-center justify-between gap-2" style={{ padding: "2px 0" }}>
+                <div className="flex items-center gap-2" style={{ minWidth: 0 }}>
+                  <span className="mono t-xs" style={{ color: "var(--color-on-bright)" }}>{f.name}</span>
+                  <ClassificationBadge classification={f.classification} />
+                </div>
+                {f.classification === "PRIVATE" && valid && (
+                  <button
+                    className="btn btn--link btn--xs"
+                    disabled={proofLoading}
+                    onClick={() => {
+                      onRequestProof?.(f.name);
+                      // Poll for proof result (simple approach — parent sets proofResult)
+                      const check = setInterval(() => {
+                        if (proofResult && proofResult.field.name === f.name) {
+                          clearInterval(check);
+                          handleProofReady(f.name);
+                        }
+                      }, 100);
+                      setTimeout(() => clearInterval(check), 10_000);
+                    }}
+                  >
+                    {proofLoading ? "…" : "Disclose"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Commitment hash */}
       <div style={{ marginTop: "var(--space-2)" }}>
         <div className="commitment">
           <span className="merkle-leaf" aria-hidden="true" />
@@ -53,6 +130,18 @@ export function CredentialCard({ claim, schemaName }: CredentialCardProps) {
           Verify ↗
         </Link>
       </div>
+
+      {/* Disclosure modal */}
+      {disclosingField && proofResult && (
+        <SelectiveDisclosure
+          claimId={claim.claimId}
+          field={disclosingField}
+          proof={proofResult.proof}
+          leaf={proofResult.leaf}
+          leafIndex={proofResult.leafIndex}
+          onClose={() => setDisclosingField(null)}
+        />
+      )}
     </Card>
   );
 }

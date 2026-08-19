@@ -32,7 +32,12 @@ export async function signedFetch<T = unknown>(opts: SignedFetchOptions): Promis
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
 
-  const json = await res.json();
+  const json = await res.json().catch(() => null);
+  if (!json || typeof json !== "object") {
+    // Backend always responds with the JSON envelope; a non-JSON body means the
+    // request hit a proxy/dev-server error page instead of the API.
+    throw new Error(`Request failed (${res.status}) — server returned a non-JSON response`);
+  }
   if (!json.success) {
     throw new Error(json.error?.message ?? `Request failed (${res.status})`);
   }

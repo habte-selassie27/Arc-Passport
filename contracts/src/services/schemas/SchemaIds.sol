@@ -219,3 +219,45 @@ bytes32 constant FOLLOWER_MILESTONE_ID = keccak256(
         '[{"name":"platform","type":"string"},{"name":"followerCount","type":"uint32"},{"name":"milestone","type":"uint32"},{"name":"verifiedAt","type":"uint64"}]'
     )
 );
+
+bytes32 constant WEB2_DATA_PROOF_ID = keccak256(
+    abi.encodePacked(
+        "arcpass_web2_data_proof",
+        "1.0.0",
+        '[{"name":"verified","type":"bool"},{"name":"provider","type":"string"},{"name":"templateId","type":"string"},{"name":"dataHash","type":"bytes32"},{"name":"checkedAt","type":"uint64"}]'
+    )
+);
+
+bytes32 constant OPENID3_IDENTITY_ID = keccak256(
+    abi.encodePacked(
+        "arcpass_openid3_identity",
+        "1.0.0",
+        '[{"name":"linked","type":"bool"},{"name":"provider","type":"string"},{"name":"accountHandle","type":"string"},{"name":"accountVerified","type":"bool"},{"name":"linkedAt","type":"uint64"}]'
+    )
+);
+
+// ─── ZK Passport ───────────────────────────────────────────────────────
+
+bytes32 constant PASSPORT_AUTHENTICITY_ID = keccak256(
+    abi.encodePacked(
+        "arcpass_passport_authenticity",
+        "1.0.0",
+        '[{"name":"documentType","type":"string"},{"name":"issuerCountry","type":"string"},{"name":"issuingAuthority","type":"string"},{"name":"documentNumber","type":"string"},{"name":"issuedAt","type":"uint64"},{"name":"expiresAt","type":"uint64"},{"name":"verified","type":"bool"},{"name":"proofHash","type":"bytes32"}]'
+    )
+);
+
+bytes32 constant ZK_ATTRIBUTE_PROOF_ID = keccak256(
+    abi.encodePacked(
+        "arcpass_zk_attribute_proof",
+        "1.0.0",
+        '[{"name":"attributeType","type":"string"},{"name":"attributeHash","type":"bytes32"},{"name":"circuitId","type":"string"},{"name":"verified","type":"bool"},{"name":"proofHash","type":"bytes32"},{"name":"verifiedAt","type":"uint64"}]'
+    )
+);
+
+bytes32 constant NFC_PASSPORT_SCAN_ID = keccak256(
+    abi.encodePacked(
+        "arcpass_nfc_passport_scan",
+        "1.0.0",
+        '[{"name":"scanProvider","type":"string"},{"name":"documentType","type":"string"},{"name":"countryCode","type":"string"},{"name":"chipVerified","type":"bool"},{"name":"signatureValid","type":"bool"},{"name":"livenessPassed","type":"bool"},{"name":"scannedAt","type":"uint64"},{"name":"nullifier","type":"bytes32"}]'
+    )
+);

@@ -5,6 +5,13 @@ export interface ActiveClaim {
   valid:    boolean;
 }
 
+export interface ServiceClaims {
+  service:    string;
+  claims:     ActiveClaim[];
+  verified:   boolean;
+  claimCount: number;
+}
+
 export interface IdentityMetadata {
   arcpass_version: string;
   type:            "identity";

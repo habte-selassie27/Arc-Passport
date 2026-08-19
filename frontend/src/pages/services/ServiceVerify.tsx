@@ -24,6 +24,7 @@ const SERVICE_DESCRIPTIONS: Record<ServiceKey, string> = {
   education: "View degrees, course completions, and bootcamp graduations.",
   social: "Check social account links, humanity proofs, and follower milestones.",
   custom: "View custom attestation claims.",
+  zkPassport: "View ZK passport authenticity and attribute proofs.",
 };
 
 interface PassportView {

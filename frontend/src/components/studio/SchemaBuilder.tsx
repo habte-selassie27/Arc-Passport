@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { keccak256, encodePacked } from "viem";
 import { ADDRESSES } from "../../config/addresses";
@@ -13,10 +14,28 @@ import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
 import { CodeBlock } from "../ui/CodeBlock";
 
+interface PrefillState {
+  prefill?: {
+    name: string;
+    version: string;
+    fields: FieldDef[];
+  };
+}
+
+function getInitialFields(state: PrefillState): FieldDef[] {
+  if (state.prefill?.fields?.length) {
+    return state.prefill.fields.map((f) => ({ name: f.name, type: f.type }));
+  }
+  return [{ name: "", type: "string" }];
+}
+
 export function SchemaBuilder() {
-  const [name, setName] = useState("");
-  const [version, setVersion] = useState("3.0.0");
-  const [fields, setFields] = useState<FieldDef[]>([{ name: "", type: "string" }]);
+  const location = useLocation();
+  const state = (location.state as PrefillState) ?? {};
+
+  const [name, setName] = useState(state.prefill?.name ?? "");
+  const [version, setVersion] = useState(state.prefill?.version ?? "3.0.0");
+  const [fields, setFields] = useState<FieldDef[]>(getInitialFields(state));
 
   const fieldsJson = JSON.stringify(fields.map((f) => ({ name: f.name, type: f.type })));
   const regArgs = [name, version, fieldsJson] as const;
@@ -70,6 +89,15 @@ export function SchemaBuilder() {
         Define a custom claim schema. The schema ID is computed deterministically from name + version + fields.
       </p>
 
+      {state.prefill && (
+        <div
+          className="chip chip--valid"
+          style={{ marginBottom: "var(--space-4)", alignSelf: "flex-start" }}
+        >
+          Pre-filled from template: {state.prefill.name}
+        </div>
+      )}
+
       <div className="space-y-4" style={{ marginBottom: "var(--space-4)" }}>
         <Field label="Schema name" htmlFor="studio-schema-name" helper="Use snake_case. e.g. arcpass_myschema">
           <Input
@@ -97,7 +125,6 @@ export function SchemaBuilder() {
       {computedSchemaId && (
         <div style={{ marginBottom: "var(--space-4)" }}>
           <p className="eyebrow" style={{ marginBottom: "var(--space-1)" }}>Schema ID (live)</p>
-          {/* Show the computation: keccak256(abi.encodePacked(name, version, fieldsJson)) */}
           <div className="schema-compute">
             <div className="schema-compute__step">
               <span className="merkle-leaf" aria-hidden="true" />

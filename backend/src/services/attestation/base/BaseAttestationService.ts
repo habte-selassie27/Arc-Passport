@@ -1,4 +1,4 @@
-import { encodeAbiParameters, keccak256 } from "viem";
+import { keccak256 } from "viem";
 import { getCircleClient, assertBlockchain } from "../../../config/circle.js";
 import { publicClient } from "../../arcService.js";
 import { ADDRESSES } from "../../../config/arc.js";
@@ -6,11 +6,17 @@ import { ATTESTATION_REGISTRY_ABI } from "../../../abis/AttestationRegistry.js";
 import { PASSPORT_VERIFIER_ABI } from "../../../abis/PassportVerifier.js";
 import { BATCH_ATTESTATION_ABI } from "../../../abis/BatchAttestation.js";
 import { Errors } from "../../../utils/errors.js";
+import { buildClaimTree, type ClaimField } from "../../../utils/merkleClaimBuilder.js";
+import { uploadToIpfs } from "../../ipfsService.js";
+import { saveClaimPayload, type ClaimFieldPayload } from "../../claimPayloadStore.js";
 
 export interface AttestInput {
   subject: `0x${string}`;
   schemaId: `0x${string}`;
-  data: `0x${string}`;
+  /** Legacy: flat ABI-encoded claim data. Kept for backward compatibility. */
+  data?: `0x${string}`;
+  /** V2: structured fields for Merkle-tree selective disclosure. */
+  fields?: ClaimFieldPayload[];
   expiresAt: number;
 }
 
@@ -26,6 +32,13 @@ export class BaseAttestationService {
   protected readonly serviceName: string;
   protected readonly walletId: string;
 
+  /** Temporary holding area for Merkle tree data between tree build and issuance. */
+  private _pendingPayload: {
+    fields: ClaimFieldPayload[];
+    leaves: string[];
+    tree: import("merkletreejs").MerkleTree;
+  } | null = null;
+
   constructor(serviceName: string, walletId: string) {
     this.serviceName = serviceName;
     this.walletId = walletId;
@@ -38,19 +51,52 @@ export class BaseAttestationService {
       throw Errors.InvalidSchemaId(input.schemaId ?? "0x0");
     }
 
-    // The deployed AttestationRegistry stores a `bytes32 dataCommitment` (a hash of
-    // the claim payload), NOT the raw abi-encoded bytes. The service subclasses build
-    // `input.data` as variable-length abi-encoded claim data, so we commit to its
-    // keccak256 onchain. The full payload must be stored off-chain (IPFS) and
-    // disclosed via selective-disclosure proofs.
-    const dataCommitment = keccak256(input.data);
+    let dataCommitment: `0x${string}`;
+
+    if (input.fields && input.fields.length > 0) {
+      // V2 path: build a Merkle tree from structured fields.
+      // The tree root becomes the on-chain dataCommitment.
+      const claimFields: ClaimField[] = input.fields.map((f) => ({
+        name: f.name,
+        type: f.type,
+        value: f.value,
+      }));
+      const { root, leaves, tree } = buildClaimTree(claimFields);
+      dataCommitment = root;
+
+      // Store the full payload off-chain for proof generation.
+      // The IPFS CID is written after issuance succeeds (see _postIssuance).
+      this._pendingPayload = {
+        fields: input.fields,
+        leaves: leaves.map(String),
+        tree,
+      };
+    } else if (input.data) {
+      // Legacy path: hash the flat ABI-encoded bytes.
+      dataCommitment = keccak256(input.data);
+    } else {
+      throw Errors.InvalidSchemaId("No data or fields provided");
+    }
 
     const txId = await this._submitToCircle(
       "attest(address,bytes32,bytes32,uint256)",
       [input.subject, input.schemaId, dataCommitment, input.expiresAt.toString()],
       ADDRESSES.attestationRegistry!
     );
-    return this._pollForHash(txId);
+    const txHash = await this._pollForHash(txId);
+
+    // Best-effort: store payload off-chain (IPFS + local store).
+    // Failure here doesn't invalidate the on-chain claim.
+    if (this._pendingPayload) {
+      try {
+        await this._storePayload(input, dataCommitment, this._pendingPayload);
+      } catch (err) {
+        console.warn("[BaseAttestationService] Failed to store claim payload:", err);
+      }
+      this._pendingPayload = null;
+    }
+
+    return txHash;
   }
 
   async revoke(claimId: `0x${string}`): Promise<`0x${string}`> {
@@ -77,7 +123,7 @@ export class BaseAttestationService {
     const encoded = inputs.map((i) => ({
       subject:        i.subject,
       schemaId:       i.schemaId,
-      dataCommitment: keccak256(i.data),
+      dataCommitment: i.data ? keccak256(i.data) : i.fields ? buildClaimTree(i.fields.map((f) => ({ name: f.name, type: f.type, value: f.value }))).root : keccak256("0x"),
       expiresAt:      BigInt(i.expiresAt),
     }));
 
@@ -147,6 +193,45 @@ export class BaseAttestationService {
       functionName: "isValid",
       args:         [claimId],
     }) as Promise<boolean>;
+  }
+
+  /**
+   * Store the claim payload off-chain for selective-disclosure proof generation.
+   * Tries IPFS first (best-effort), then persists in the local JSON store.
+   */
+  private async _storePayload(
+    input: AttestInput,
+    dataCommitment: `0x${string}`,
+    pending: NonNullable<BaseAttestationService["_pendingPayload"]>
+  ): Promise<void> {
+    const payload = {
+      claimId: dataCommitment, // Will be replaced with real claimId if available
+      subject: input.subject,
+      schemaId: input.schemaId,
+      issuer: this.walletId,
+      fields: pending.fields,
+      leaves: pending.leaves,
+      issuedAt: Date.now(),
+      expiresAt: input.expiresAt,
+    };
+
+    // Try IPFS (best-effort — fails gracefully if no Pinata keys)
+    let ipfsCid: string | null = null;
+    try {
+      const uri = await uploadToIpfs(payload as unknown as Record<string, unknown>);
+      ipfsCid = uri; // e.g. "ipfs://Qm..."
+    } catch {
+      // Pinata not configured or failed — store locally only
+    }
+
+    // Always persist locally for proof generation
+    saveClaimPayload({
+      claimId: input.subject + ":" + input.schemaId, // temporary key until real claimId is known
+      ipfsCid,
+      fields: pending.fields,
+      leaves: pending.leaves,
+      createdAt: Date.now(),
+    });
   }
 
   private _assertBlockchain() {

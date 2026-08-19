@@ -2,14 +2,108 @@ import { QRCodeSVG } from "qrcode.react";
 import { AddressDisplay } from "../ui/AddressDisplay";
 import { CredentialCard } from "./CredentialCard";
 import { ServiceBadge } from "./ServiceBadge";
+import { ScoreDisplay } from "./ScoreDisplay";
 import { LogoMark } from "../ui/LogoMark";
 import { EmptyState } from "../ui/EmptyState";
 import { Button } from "../ui/Button";
-import { ALL_SERVICE_KEYS, SERVICE_LABELS, type PassportDocument, type ServiceKey, type ActiveClaim } from "../../types/passport";
+import { ALL_SERVICE_KEYS, SERVICE_LABELS, type PassportDocument, type ServiceKey, type ActiveClaim, type TrustScore, type OnChainScore } from "../../types/passport";
 import { schemaNameForId } from "../../utils/schemaNames";
+import type { ClaimFieldClassification, FieldProof } from "../../hooks/useFieldProof";
 
 interface PassportCardProps {
   passport: PassportDocument;
+  /** Field classifications keyed by claimId (fetched for the subject's own claims). */
+  claimFields?: Record<string, ClaimFieldClassification[]>;
+  /** Called when user clicks "Disclose" on a PRIVATE field. */
+  onRequestProof?: (claimId: string, fieldName: string) => void;
+  /** The currently generated proof (if any). */
+  proofResult?: FieldProof | null;
+  /** True while a proof is being fetched. */
+  proofLoading?: boolean;
+}
+
+/** Trust Score display — the composite weighted score with category breakdown. */
+function TrustScoreDisplay({ trustScore }: { trustScore: TrustScore }) {
+  const scoreColor = trustScore.passed ? "var(--color-verified)" : "var(--color-warning)";
+  const activeCategories = trustScore.categories.filter((c) => c.claimCount > 0);
+
+  return (
+    <div>
+      <p className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>
+        Trust Score
+      </p>
+      <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)" }}>
+        <span
+          className="mono t-3xl"
+          style={{ color: scoreColor, fontWeight: 700 }}
+        >
+          {trustScore.score}
+        </span>
+        <span className="t-xs c-subtle">/ {trustScore.threshold} threshold</span>
+      </div>
+      <div
+        style={{
+          marginTop: "var(--space-2)",
+          height: 6,
+          borderRadius: 3,
+          background: "var(--color-surface-1)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${Math.min((trustScore.score / 100) * 100, 100)}%`,
+            height: "100%",
+            background: scoreColor,
+            borderRadius: 3,
+            transition: "width 0.3s ease",
+          }}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-x-4" style={{ marginTop: "var(--space-3)" }}>
+        <div className="data-row" style={{ borderBottom: "none", padding: "var(--space-1) 0" }}>
+          <span className="data-row__label t-xs">Attestations</span>
+          <span className="mono t-sm" style={{ color: "var(--color-on-bright)" }}>
+            {trustScore.totalClaims}
+          </span>
+        </div>
+        <div className="data-row" style={{ borderBottom: "none", padding: "var(--space-1) 0" }}>
+          <span className="data-row__label t-xs">Unique issuers</span>
+          <span className="mono t-sm" style={{ color: "var(--color-on-bright)" }}>
+            {trustScore.totalIssuers}
+          </span>
+        </div>
+        <div className="data-row" style={{ borderBottom: "none", padding: "var(--space-1) 0" }}>
+          <span className="data-row__label t-xs">Categories</span>
+          <span className="mono t-sm" style={{ color: "var(--color-on-bright)" }}>
+            {trustScore.activeCategories.length}/{trustScore.categories.length}
+          </span>
+        </div>
+        <div className="data-row" style={{ borderBottom: "none", padding: "var(--space-1) 0" }}>
+          <span className="data-row__label t-xs">Status</span>
+          <span
+            className="t-sm"
+            style={{ color: trustScore.passed ? "var(--color-verified)" : "var(--color-warning)" }}
+          >
+            {trustScore.passed ? "Passed" : "Below threshold"}
+          </span>
+        </div>
+      </div>
+      {activeCategories.length > 0 && (
+        <div style={{ marginTop: "var(--space-3)" }}>
+          <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-1)" }}>Category breakdown</p>
+          {activeCategories.map((cat) => (
+            <div key={cat.service} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+              <span className="t-xs">{cat.label}</span>
+              <span className="mono t-xs" style={{ color: "var(--color-on-bright)" }}>
+                {cat.claimCount} claim{cat.claimCount !== 1 ? "s" : ""} · {cat.score.toFixed(1)} pts
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Transparent reputation signals — counters derived from on-chain claims. */
@@ -50,7 +144,7 @@ function ReputationSignals({ passport }: { passport: PassportDocument }) {
   );
 }
 
-export function PassportCard({ passport }: PassportCardProps) {
+export function PassportCard({ passport, claimFields, onRequestProof, proofResult, proofLoading }: PassportCardProps) {
   const qrValue = `${window.location.origin}/passport/${passport.address}`;
   const name = passport.metadata?.name;
 
@@ -138,6 +232,21 @@ export function PassportCard({ passport }: PassportCardProps) {
         )}
 
         <div style={{ marginTop: "var(--space-5)" }}>
+          <TrustScoreDisplay trustScore={passport.trustScore} />
+        </div>
+        {passport.onChainScore && (
+          <div style={{ marginTop: "var(--space-5)" }}>
+            <ScoreDisplay score={passport.onChainScore} variant="compact" />
+            <a
+              href={`/score/${passport.address}`}
+              className="btn btn--ghost btn--sm"
+              style={{ marginTop: "var(--space-2)", display: "inline-block" }}
+            >
+              View full score →
+            </a>
+          </div>
+        )}
+        <div style={{ marginTop: "var(--space-5)" }}>
           <ReputationSignals passport={passport} />
         </div>
 
@@ -196,7 +305,15 @@ export function PassportCard({ passport }: PassportCardProps) {
                 </div>
                 <div className="grid gap-3">
                   {(svc.claims ?? []).map((c) => (
-                    <CredentialCard key={c.claimId} claim={c} schemaName={schemaNameForId(c.schemaId)} />
+                    <CredentialCard
+                      key={c.claimId}
+                      claim={c}
+                      schemaName={schemaNameForId(c.schemaId)}
+                      fields={claimFields?.[c.claimId]}
+                      onRequestProof={(fieldName) => onRequestProof?.(c.claimId, fieldName)}
+                      proofResult={proofResult?.claimId === c.claimId ? proofResult : null}
+                      proofLoading={proofLoading}
+                    />
                   ))}
                 </div>
               </section>

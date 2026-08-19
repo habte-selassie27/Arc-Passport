@@ -2,11 +2,13 @@ import { BaseAttestationService } from "./base/BaseAttestationService.js";
 
 export type ServiceKey =
   | "identity" | "kyc" | "credentials" | "dao"
-  | "reputation" | "employment" | "education" | "social" | "custom";
+  | "reputation" | "employment" | "education" | "social" | "custom"
+  | "zkPassport";
 
 export const ALL_SERVICE_KEYS: readonly ServiceKey[] = [
   "identity", "kyc", "credentials", "dao",
   "reputation", "employment", "education", "social", "custom",
+  "zkPassport",
 ] as const;
 
 /** Env var suffix for each service's Circle issuer wallet ID. */
@@ -20,6 +22,7 @@ const WALLET_ENV_MAP: Record<ServiceKey, string> = {
   education:   "CIRCLE_EDUCATION_ISSUER_WALLET_ID",
   social:      "CIRCLE_SOCIAL_ISSUER_WALLET_ID",
   custom:      "CIRCLE_CUSTOM_ISSUER_WALLET_ID",
+  zkPassport:  "CIRCLE_ZK_ISSUER_WALLET_ID",
 };
 
 const registry = Object.fromEntries(

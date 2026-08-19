@@ -47,7 +47,7 @@ const csvBig = (s: string) => (s && s.length ? BigInt(s) : 0n);
 const csvBool = (s: string) => ["true", "1", "yes", "y"].includes(s.toLowerCase());
 const csvUpper = (s: string) => s.toUpperCase();
 
-const SERVICE_ENCODERS: Record<Exclude<ServiceKey, "custom">, RowEncoders> = {
+const SERVICE_ENCODERS: Record<Exclude<ServiceKey, "custom" | "zkPassport">, RowEncoders> = {
   identity: {
     schemaId: IDENTITY_SCHEMAS.BASIC_IDENTITY.id!,
     subjectField: "subject",

@@ -3,11 +3,13 @@ import { ADDRESSES } from "../config/arc.js";
 import { IDENTITY_REGISTRY_ABI } from "../abis/IdentityRegistry.js";
 import { REPUTATION_REGISTRY_ABI } from "../abis/ReputationRegistry.js";
 import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
+import { SCORE_REGISTRY_ABI } from "../abis/ScoreRegistry.js";
 import { fetchFromIpfs } from "./ipfsService.js";
 import { getClaimsBySubject } from "../indexer/claimIndexer.js";
 import { type ServiceKey } from "./attestation/index.js";
 import { ALL_SCHEMAS } from "../constants/schemas.js";
 import { Errors } from "../utils/errors.js";
+import { computeTrustScore } from "./scoringService.js";
 import type { ActiveClaim, IdentityMetadata, ReputationEvent } from "../types/passport.js";
 
 export type { ServiceKey };
@@ -20,19 +22,33 @@ export interface ServiceClaims {
 }
 
 export interface PassportDocument {
-  address:     string;
-  identityId:  number;
-  metadataUri: string | null;
-  metadata:    IdentityMetadata | null;
-  reputation:  ReputationEvent[];
-  claims:      ActiveClaim[];
-  services:    Record<ServiceKey, ServiceClaims>;
-  generatedAt: number;
+  address:      string;
+  identityId:   number;
+  metadataUri:  string | null;
+  metadata:     IdentityMetadata | null;
+  reputation:   ReputationEvent[];
+  claims:       ActiveClaim[];
+  services:     Record<ServiceKey, ServiceClaims>;
+  trustScore:   TrustScore;
+  onChainScore: OnChainScore | null;
+  generatedAt:  number;
 }
+
+export interface OnChainScore {
+  score:           number;
+  isValid:         boolean;
+  isHuman:         boolean;
+  computedAt:      number;
+  expiresAt:       number;
+  dataCommitment:  string;
+}
+
+import type { TrustScore } from "./scoringService.js";
 
 const ALL_SERVICE_KEYS: ServiceKey[] = [
   "identity", "kyc", "credentials", "dao",
   "reputation", "employment", "education", "social", "custom",
+  "zkPassport",
 ];
 
 const MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11" as `0x${string}`;
@@ -210,15 +226,49 @@ export async function getPassport(address: `0x${string}`): Promise<PassportDocum
 
   const services = buildServicesFromIndexedClaims(address, claims);
 
+  const trustScore = computeTrustScore(services);
+
+  // Fetch on-chain score if ScoreRegistry is configured
+  let onChainScore: OnChainScore | null = null;
+  if (ADDRESSES.scoreRegistry) {
+    try {
+      const [score, isValid, isHuman] = await publicClient.readContract({
+        address: ADDRESSES.scoreRegistry,
+        abi: SCORE_REGISTRY_ABI,
+        functionName: "getScore",
+        args: [address, 0],
+      });
+      // Get raw detail for computedAt/expiresAt
+      const raw = await publicClient.readContract({
+        address: ADDRESSES.scoreRegistry,
+        abi: SCORE_REGISTRY_ABI,
+        functionName: "scores",
+        args: [address, 0],
+      });
+      onChainScore = {
+        score: Number(score),
+        isValid,
+        isHuman,
+        computedAt: Number(raw[2]),
+        expiresAt: Number(raw[3]),
+        dataCommitment: raw[1],
+      };
+    } catch {
+      onChainScore = null;
+    }
+  }
+
   return {
-    address:     address,
-    identityId:  identity?.tokenId ?? 0,
-    metadataUri: identity?.metadataUri ?? null,
+    address:      address,
+    identityId:   identity?.tokenId ?? 0,
+    metadataUri:  identity?.metadataUri ?? null,
     metadata,
     reputation,
     claims,
     services,
-    generatedAt: Date.now(),
+    trustScore,
+    onChainScore,
+    generatedAt:  Date.now(),
   };
 }
 

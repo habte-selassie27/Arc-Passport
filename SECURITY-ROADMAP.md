@@ -226,70 +226,61 @@ Redis should not be introduced merely because it is common.
 
 Use it only when persistent/distributed nonce state or another real requirement justifies it.
 
-## 18. V1 Privacy
+## 18. Selective Disclosure — Implemented (V2)
 
-ArcPass V1 may use Merkle-based selective disclosure.
+ArcPass implements Merkle-based selective disclosure. Each claim's `dataCommitment`
+on-chain is the Merkle root of its field leaves.
 
-The basic model:
-
-```
-Private fields
-      ↓
-Merkle tree
-      ↓
-Root stored/committed
-      ↓
-User reveals selected field
-      ↓
-Merkle proof
-      ↓
-Verifier confirms membership
-```
-
-This allows individual fields to be disclosed without exposing every committed field.
-
-## 19. V2 Privacy — ZK Proofs
-
-Zero-knowledge proofs are a potential future improvement.
-
-Possible capability:
-
-> Prove that a credential satisfies a condition without revealing the underlying private value.
-
-Example:
+### Issuance flow
 
 ```
-User has a valid Builder credential
-        ↓
-Generate ZK proof
-        ↓
-Verifier receives proof
-        ↓
-"Requirement satisfied"
+Backend receives structured fields
+      ↓
+Build Merkle tree (keccak256 leaves, sorted pairs)
+      ↓
+Tree root → dataCommitment (on-chain)
+Full payload → IPFS (best-effort) + local store
+      ↓
+Subject can generate field-specific Merkle proofs
 ```
 
-Potential technologies include:
+### Disclosure flow
 
-- Circom
-- snarkjs
-- Groth16
-- PLONK
-- alternative modern ZK systems if they provide a better fit
+```
+Subject calls GET /attestation/:claimId/field/:fieldName/proof
+      ↓
+Backend returns { leaf, proof, leafIndex, field }
+      ↓
+Subject shares (leaf, proof, leafIndex) with verifier
+      ↓
+Verifier calls GET /attestation/:claimId/field/:fieldName/verify
+      ↓
+On-chain verifyField() → { valid: boolean }
+```
 
-Do not commit the project to a specific ZK stack until the actual proof requirements are defined.
+### Access control
 
-### V1 ZK-readiness
+- Field classifications and proof generation require subject authentication (signed nonce)
+- Verification is public — anyone can verify a field proof on-chain
+- Non-subjects cannot access PRIVATE field values or generate proofs
 
-Current state (V1): Merkle-based selective disclosure — field data is structured as a Merkle
-tree of individual leaves; the user presents only the field (leaf) + Merkle proof to verifiers.
+### Legacy claims
 
-Planned V2 changes (enabled by the UUPS proxy):
+Claims issued before V2 used `keccak256(flatAbiEncodedData)` — no Merkle tree.
+These remain valid for basic attestation but do not support selective disclosure.
+The frontend shows "Selective disclosure not available for legacy claims".
+
+## 19. ZK Proofs — V3 Roadmap
+
+Zero-knowledge proofs are a future improvement.
+
+Planned changes (enabled by the UUPS proxy):
 
 1. Add `bytes32 zkCommitment` to the `Claim` struct (new storage slot, appended before `__gap`)
 2. Add `verifyZkField()` to PassportVerifier — accepts Groth16/PLONK proof + public signals
 3. Circom circuit proves `hash(field_value) == leaf && MerkleProof(leaf, root) == true` without revealing `field_value`
 
-V1 design decisions for ZK compatibility:
+ZK-readiness table:
 
 | Decision | Status | Notes |
 |----------|--------|-------|
@@ -298,7 +289,7 @@ V1 design decisions for ZK compatibility:
 | Merkle tree structure | ✅ | Compatible — ZK proves membership without revealing leaf |
 | Schema immutability | ✅ | Prevents ZK circuit versioning issues |
 
-Migration path: V2 is additive — all V1 Merkle-based claims remain valid; existing
+Migration path: V3 is additive — all V2 Merkle-based claims remain valid; existing
 `verifyField()` continues working alongside `verifyZkField()`; the subject chooses which
 verification method to support.
 

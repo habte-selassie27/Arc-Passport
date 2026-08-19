@@ -14,7 +14,9 @@ import {
     REPUTATION_SCORE_ID, POSITIVE_INTERACTION_ID, DISPUTE_RECORD_ID,
     EMPLOYMENT_RECORD_ID, INCOME_BAND_ID, CONTRACTOR_RECORD_ID,
     DEGREE_ID, COURSE_COMPLETION_ID, BOOTCAMP_GRADUATE_ID,
-    SOCIAL_ACCOUNT_ID, HUMANITY_PROOF_ID, FOLLOWER_MILESTONE_ID
+    SOCIAL_ACCOUNT_ID, HUMANITY_PROOF_ID, FOLLOWER_MILESTONE_ID,
+    WEB2_DATA_PROOF_ID,
+    OPENID3_IDENTITY_ID
 } from "../src/services/schemas/SchemaIds.sol";
 
 /// @title SchemaIdParityTest
@@ -289,5 +291,25 @@ contract SchemaIdParityTest is Test {
             '[{"name":"platform","type":"string"},{"name":"followerCount","type":"uint32"},{"name":"milestone","type":"uint32"},{"name":"verifiedAt","type":"uint64"}]'
         );
         assertEq(onchain, FOLLOWER_MILESTONE_ID, "SocialSchemas.FOLLOWER_MILESTONE_ID must match onchain register");
+    }
+
+    function test_parity_WEB2_DATA_PROOF() public {
+        bytes32 onchain = _registerAndReturnId(
+            "arcpass_web2_data_proof",
+            "1.0.0",
+            '[{"name":"verified","type":"bool"},{"name":"provider","type":"string"},{"name":"templateId","type":"string"},{"name":"dataHash","type":"bytes32"},{"name":"checkedAt","type":"uint64"}]'
+        );
+        assertEq(onchain, WEB2_DATA_PROOF_ID, "SocialSchemas.WEB2_DATA_PROOF_ID must match onchain register");
+    }
+
+    // ─── OPENID3 IDENTITY ──────────────────────────────────────────────────
+
+    function test_parity_OPENID3_IDENTITY() public {
+        bytes32 onchain = _registerAndReturnId(
+            "arcpass_openid3_identity",
+            "1.0.0",
+            '[{"name":"linked","type":"bool"},{"name":"provider","type":"string"},{"name":"accountHandle","type":"string"},{"name":"accountVerified","type":"bool"},{"name":"linkedAt","type":"uint64"}]'
+        );
+        assertEq(onchain, OPENID3_IDENTITY_ID, "OPENID3_IDENTITY_ID mismatch");
     }
 }

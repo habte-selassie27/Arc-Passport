@@ -51,4 +51,40 @@ export const Errors = {
     new ArcPassError("SERVICE_TIMEOUT", `Service ${service} timed out`, 504),
   MissingFields: (fields: string[]) =>
     new ArcPassError("MISSING_FIELDS", `Missing required fields: ${fields.join(", ")}`, 400),
+  ScoreNotConfigured: () =>
+    new ArcPassError("SCORE_NOT_CONFIGURED", "Score registry not configured", 503),
+  ScorerNotFound: (scorerId: number) =>
+    new ArcPassError("SCORER_NOT_FOUND", `Scorer ${scorerId} not found`, 404),
+  ScorerInactive: (scorerId: number) =>
+    new ArcPassError("SCORER_INACTIVE", `Scorer ${scorerId} is inactive`, 422),
+  ScoreWriteFailed: (reason: string) =>
+    new ArcPassError("SCORE_WRITE_FAILED", `Score commit failed: ${reason}`, 502),
+  VerificationNotFound: (id: string) =>
+    new ArcPassError("VERIFICATION_NOT_FOUND", `Unknown verification ${id}`, 404),
+  VerificationMismatch: () =>
+    new ArcPassError("VERIFICATION_MISMATCH", "Verification does not belong to this wallet", 403),
+  TaskIdMismatch: () =>
+    new ArcPassError("TASK_ID_MISMATCH", "Task ID mismatch", 400),
+  OpenID3ProviderFailed: (reason: string) =>
+    new ArcPassError("OPENID3_PROVIDER_FAILED", `OpenID3 provider error: ${reason}`, 502),
+  OpenID3AlreadyLinked: () =>
+    new ArcPassError("OPENID3_ALREADY_LINKED", "This Web2 account is already linked to a different wallet", 409),
+  VerificationExpired: () =>
+    new ArcPassError("VERIFICATION_EXPIRED", "Verification session expired", 410),
+  HumanodeVerifyFailed: (reason: string) =>
+    new ArcPassError("HUMANODE_VERIFY_FAILED", `Provider verification failed: ${reason}`, 502),
+  HumanodeNotUnique: () =>
+    new ArcPassError("HUMANODE_NOT_UNIQUE", "Humanode did not confirm a unique living human", 422),
+  HumanodeAlreadyBound: () =>
+    new ArcPassError(
+      "HUMANODE_ALREADY_BOUND",
+      "This human identity is already linked to a different wallet",
+      409
+    ),
+  AttestationFailed: (reason: string) =>
+    new ArcPassError("ATTESTATION_FAILED", `On-chain attestation failed: ${reason}`, 502),
+  ProviderVerifyFailed: (reason: string) =>
+    new ArcPassError("PROVIDER_VERIFY_FAILED", `Provider verification failed: ${reason}`, 502),
+  ProviderAlreadyBound: () =>
+    new ArcPassError("PROVIDER_ALREADY_BOUND", "This proof is already linked to a different wallet", 409),
 } as const;

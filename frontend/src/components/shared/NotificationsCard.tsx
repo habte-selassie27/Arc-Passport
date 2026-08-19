@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+
 import { useNotifications } from "../../hooks/useNotifications";
 import { Card } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
@@ -11,10 +11,7 @@ import { ErrorState } from "../ui/ErrorState";
  */
 export function NotificationsCard({ address }: { address: `0x${string}` }) {
   const { notifications, unread, isLoading, error, load, markRead, markAllRead } = useNotifications(address);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const loaded = notifications.length > 0 || error || isLoading;
 
   return (
     <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -35,12 +32,20 @@ export function NotificationsCard({ address }: { address: `0x${string}` }) {
             </span>
           )}
         </h2>
-        {unread > 0 && (
+        {loaded && unread > 0 && (
           <button type="button" className="btn btn--link btn--sm" onClick={() => void markAllRead()}>
             Mark all read
           </button>
         )}
       </div>
+
+      {!loaded && (
+        <div style={{ padding: "var(--space-5)", textAlign: "center" }}>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => void load()}>
+            Load notifications
+          </button>
+        </div>
+      )}
 
       {isLoading && notifications.length === 0 && (
         <div className="flex items-center justify-center gap-2 c-muted t-sm" style={{ padding: "var(--space-6)" }}>
@@ -59,7 +64,7 @@ export function NotificationsCard({ address }: { address: `0x${string}` }) {
         </div>
       )}
 
-      {!isLoading && !error && notifications.length === 0 && (
+      {!isLoading && !error && notifications.length === 0 && loaded && (
         <EmptyState
           title="No notifications yet"
           body="You'll be notified when credentials are issued to your address."

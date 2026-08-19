@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 /// @notice Onchain representation of a single attestation claim.
 /// @dev Claims are keyed by claimId = keccak256(subject, schemaId, issuer, issuedAt, nonce).
 ///      Raw PII is never stored onchain — only dataCommitment (Merkle root) is recorded.
+///      EAS-inspired fields: refUID enables composable attestation chains,
+///      revokedAt tracks when revocation occurred (0 if not revoked).
 struct Claim {
     bytes32   claimId;
     address   subject;
@@ -13,6 +15,8 @@ struct Claim {
     uint256   issuedAt;
     uint256   expiresAt;
     bool      revoked;
+    bytes32   refUID;       // EAS: reference to another attestation (composability)
+    uint256   revokedAt;    // EAS: timestamp when revoked (0 = not revoked)
 }
 
 /// @title IAttestationRegistry
@@ -35,6 +39,21 @@ interface IAttestationRegistry {
         uint256   expiresAt
     ) external returns (bytes32 claimId);
 
+    /// @notice Issue a new attestation with EAS-style reference UID.
+    /// @param  subject       The address the claim is about.
+    /// @param  schemaId      The schema this claim conforms to.
+    /// @param  dataCommitment  Merkle root of the claim's field leaves.
+    /// @param  expiresAt     Unix timestamp when the claim expires (0 = never).
+    /// @param  refUID        Reference to another attestation (bytes32(0) = no reference).
+    /// @return claimId       Unique identifier for the newly issued claim.
+    function attestWithRef(
+        address   subject,
+        bytes32   schemaId,
+        bytes32   dataCommitment,
+        uint256   expiresAt,
+        bytes32   refUID
+    ) external returns (bytes32 claimId);
+
     /// @notice Revoke a previously issued claim. Only callable by REVOKER_ROLE.
     /// @param  claimId  The claim to revoke.
     function revoke(bytes32 claimId) external;
@@ -46,7 +65,6 @@ interface IAttestationRegistry {
     function isValid(bytes32 claimId) external view returns (bool);
 
     /// @notice Get the active claimId for a (subject, schemaId, issuer) triple.
-    /// @return bytes32 Zero if no active claim exists.
     function getActiveClaim(address subject, bytes32 schemaId, address issuer) external view returns (bytes32);
 
     /// @notice Get the list of all addresses currently holding ISSUER_ROLE.

@@ -53,7 +53,7 @@ contract Deploy is Script {
         AttestationRegistry attestation = AttestationRegistry(address(attestationProxy));
 
         // ── PassportVerifier (no proxy — stateless) ──
-        PassportVerifier verifier = new PassportVerifier(address(attestationProxy));
+        PassportVerifier verifier = new PassportVerifier(address(attestationProxy), address(0), address(0));
         console2.log("PassportVerifier:", address(verifier));
 
         // ── Extension contracts (standalone) ──

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useSignMessage } from "wagmi";
 import { usePassport } from "../hooks/usePassport";
 import { PassportCard } from "../components/passport/PassportCard";
 import { CardSkeleton } from "../components/ui/Skeleton";
@@ -14,13 +15,51 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { useFieldProof, type ClaimFieldClassification } from "../hooks/useFieldProof";
 
 export function PassportPage() {
   const { address: paramAddress } = useParams<{ address: string }>();
   const { address: connectedAddress } = useWallet();
+  const { signMessageAsync } = useSignMessage();
   const navigate = useNavigate();
   const targetAddress = (paramAddress || connectedAddress) as `0x${string}` | undefined;
   const { data: passport, isLoading, error, refetch } = usePassport(targetAddress);
+
+  // Selective disclosure state
+  const [claimFields, setClaimFields] = useState<Record<string, ClaimFieldClassification[]>>({});
+  const { fetchFields, fetchProof, loading: proofLoading, error: _proofError } = useFieldProof();
+  const [proofResult, setProofResult] = useState<import("../hooks/useFieldProof").FieldProof | null>(null);
+
+  /** Fetch field classifications for a claim (requires wallet signing). */
+  const handleRequestFields = useCallback(
+    async (claimId: string) => {
+      if (!connectedAddress) return;
+      const fields = await fetchFields(claimId, connectedAddress, signMessageAsync);
+      if (fields.length > 0) {
+        setClaimFields((prev) => ({ ...prev, [claimId]: fields }));
+      }
+    },
+    [connectedAddress, signMessageAsync, fetchFields]
+  );
+
+  /** Generate a Merkle proof for a specific field (requires wallet signing). */
+  const handleRequestProof = useCallback(
+    async (claimId: string, fieldName: string) => {
+      if (!connectedAddress) return;
+      // Ensure field classifications are loaded first
+      if (!claimFields[claimId]) {
+        await handleRequestFields(claimId);
+      }
+      const proof = await fetchProof(claimId, fieldName, connectedAddress, signMessageAsync);
+      setProofResult(proof);
+    },
+    [connectedAddress, signMessageAsync, fetchProof, claimFields, handleRequestFields]
+  );
+
+  const isOwner =
+    connectedAddress &&
+    targetAddress &&
+    connectedAddress.toLowerCase() === targetAddress.toLowerCase();
 
   if (!targetAddress) {
     return (
@@ -55,7 +94,15 @@ export function PassportPage() {
 
         {isLoading && <CardSkeleton />}
 
-        {!isLoading && !error && passport && <PassportCard passport={passport} />}
+        {!isLoading && !error && passport && (
+          <PassportCard
+            passport={passport}
+            claimFields={isOwner ? claimFields : undefined}
+            onRequestProof={isOwner ? handleRequestProof : undefined}
+            proofResult={isOwner ? proofResult : undefined}
+            proofLoading={isOwner ? proofLoading : undefined}
+          />
+        )}
 
         {!isLoading && !error && !passport && (
           <Card>
@@ -67,16 +114,18 @@ export function PassportPage() {
         )}
 
         {/* Own-passport extras: notifications + credential requests (wallet required). */}
-        {connectedAddress &&
-          targetAddress &&
-          connectedAddress.toLowerCase() === targetAddress.toLowerCase() && (
-            <div className="section" style={{ marginTop: "var(--space-12)" }}>
-              <NotificationsCard address={connectedAddress as `0x${string}`} />
-              <div style={{ marginTop: "var(--space-6)" }}>
-                <RequestCredentialForm address={connectedAddress as `0x${string}`} />
-              </div>
+        {isOwner && (
+          <div className="section" style={{ marginTop: "var(--space-12)" }}>
+            {/* Fetch field classifications for all claims owned by this address */}
+            {passport?.claims?.map((c) => (
+              <span key={c.claimId} className="sr-only" data-claim-id={c.claimId} />
+            ))}
+            <NotificationsCard address={connectedAddress as `0x${string}`} />
+            <div style={{ marginTop: "var(--space-6)" }}>
+              <RequestCredentialForm address={connectedAddress as `0x${string}`} />
             </div>
-          )}
+          </div>
+        )}
       </PassportErrorBoundary>
     </div>
   );

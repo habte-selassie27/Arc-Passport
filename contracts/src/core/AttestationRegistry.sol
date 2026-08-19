@@ -14,20 +14,21 @@ import "./errors/ArcPassErrors.sol";
 /// @notice Core credential store for ArcPass. Manages issuance, revocation, and lifecycle
 ///         of onchain attestation claims. Uses UUPS upgradeable pattern.
 ///
-/// @dev    GDPR-compliant architecture: raw PII is stored off-chain (encrypted on IPFS).
-///         Only keccak256 commitments (Merkle roots) are stored onchain. When a subject
-///         exercises right-to-erasure, off-chain data is deleted and the onchain commitment
-///         becomes an orphaned hash that cannot be verified — satisfying Article 17.
+/// @dev    V1.1 — EAS composability: added refUID (composable chains) and revokedAt (lifecycle tracking).
+///         New fields appended after existing layout (no reordering).
 ///
-/// @custom:storage-layout V1
+/// @custom:storage-layout V1.1
 ///   Slot 0-49:  AccessControlUpgradeable inherited storage
-///   Slot 50:    schemaRegistry (ISchemaRegistry)              ← __gap[0] consumed
-///   Slot 51:    _claimNonce (uint256)                          ← __gap[1] consumed
-///   Slot 52:    _issuerList.length (uint256, implicit from dynamic array header)
-///   Slot 53:    _issuerList[0..N] (dynamic array elements)
+///   Slot 50:    schemaRegistry (ISchemaRegistry)
+///   Slot 51:    _claimNonce (uint256)
+///   Slot 52:    _issuerList.length
+///   Slot 53:    _issuerList[0..N]
 ///   Slot 54:    _isIssuer mapping root
-///   Slot 55-56: mappings (_claims, _activeClaim) have no physical slots
+///   Slot 55-56: mappings (_claims, _activeClaim)
 ///   Slots 57-102: __gap[46]
+///   --- V1.1 additions (appended) ---
+///   Slot 103:   _resolverAddress (IResolver)
+///   Slots 104+: __gap_eas[46]
 contract AttestationRegistry is
     IAttestationRegistry,
     Initializable,
@@ -52,6 +53,10 @@ contract AttestationRegistry is
 
     uint256[46] private __gap;
 
+    // ── V1.1 EAS additions (appended after __gap) ──
+    address private _resolverAddress;   // Optional resolver contract for custom validation
+    uint256[46] private __gap_eas;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() { _disableInitializers(); }
 
@@ -73,7 +78,7 @@ contract AttestationRegistry is
 
     /// @notice Returns the contract version for upgrade tracking.
     function version() public pure virtual returns (string memory) {
-        return "1.0.0";
+        return "1.1.0";
     }
 
     /// @inheritdoc IAttestationRegistry
@@ -83,35 +88,23 @@ contract AttestationRegistry is
         bytes32   dataCommitment,
         uint256   expiresAt
     ) external onlyRole(ISSUER_ROLE) nonReentrant whenNotPaused returns (bytes32 claimId) {
-        if (subject == address(0)) revert ArcPass__InvalidSubject();
-        if (dataCommitment == bytes32(0)) revert ArcPass__EmptyData();
-        if (!schemaRegistry.isRegistered(schemaId)) revert ArcPass__InvalidSchemaId();
-        if (expiresAt != 0 && expiresAt <= block.timestamp) revert ArcPass__InvalidExpiry();
+        claimId = _attestInternal(subject, schemaId, dataCommitment, expiresAt, bytes32(0));
+    }
 
-        bytes32 existing = _activeClaim[subject][schemaId][msg.sender];
-        if (existing != bytes32(0)) {
-            Claim storage c = _claims[existing];
-            if (!c.revoked && (c.expiresAt == 0 || block.timestamp < c.expiresAt)) {
-                revert ArcPass__ActiveClaimExists(subject, schemaId, msg.sender);
-            }
+    /// @inheritdoc IAttestationRegistry
+    function attestWithRef(
+        address   subject,
+        bytes32   schemaId,
+        bytes32   dataCommitment,
+        uint256   expiresAt,
+        bytes32   refUID
+    ) external onlyRole(ISSUER_ROLE) nonReentrant whenNotPaused returns (bytes32 claimId) {
+        // If refUID is provided, verify the referenced attestation exists and is valid
+        if (refUID != bytes32(0)) {
+            if (_claims[refUID].claimId == bytes32(0)) revert ArcPass__ClaimNotFound(refUID);
+            if (!isValid(refUID)) revert ArcPass__ClaimNotFound(refUID);
         }
-
-        claimId = keccak256(abi.encode(subject, schemaId, msg.sender, block.timestamp, _claimNonce++));
-
-        _claims[claimId] = Claim({
-            claimId:        claimId,
-            subject:        subject,
-            schemaId:       schemaId,
-            issuer:         msg.sender,
-            dataCommitment: dataCommitment,
-            issuedAt:       block.timestamp,
-            expiresAt:      expiresAt,
-            revoked:        false
-        });
-
-        _activeClaim[subject][schemaId][msg.sender] = claimId;
-
-        emit ClaimIssued(claimId, subject, msg.sender, schemaId);
+        claimId = _attestInternal(subject, schemaId, dataCommitment, expiresAt, refUID);
     }
 
     /// @inheritdoc IAttestationRegistry
@@ -121,6 +114,7 @@ contract AttestationRegistry is
         if (c.revoked) revert ArcPass__ClaimAlreadyRevoked(claimId);
 
         c.revoked = true;
+        c.revokedAt = block.timestamp;
 
         emit ClaimRevoked(claimId, msg.sender, block.timestamp);
     }
@@ -172,11 +166,61 @@ contract AttestationRegistry is
     /// @notice Unpause the contract. Only callable by PAUSER_ROLE.
     function unpause() external onlyRole(PAUSER_ROLE) { _unpause(); }
 
+    /// @notice Set the resolver contract address. Only callable by admin.
+    function setResolver(address resolver) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _resolverAddress = resolver;
+    }
+
+    /// @notice Get the current resolver contract address.
+    function resolver() external view returns (address) {
+        return _resolverAddress;
+    }
+
     /// @inheritdoc UUPSUpgradeable
     function _authorizeUpgrade(address newImpl) internal override onlyRole(UPGRADER_ROLE) {}
 
+    /// @notice Internal attestation logic shared by attest() and attestWithRef().
+    function _attestInternal(
+        address   subject,
+        bytes32   schemaId,
+        bytes32   dataCommitment,
+        uint256   expiresAt,
+        bytes32   refUID
+    ) internal returns (bytes32 claimId) {
+        if (subject == address(0)) revert ArcPass__InvalidSubject();
+        if (dataCommitment == bytes32(0)) revert ArcPass__EmptyData();
+        if (!schemaRegistry.isRegistered(schemaId)) revert ArcPass__InvalidSchemaId();
+        if (expiresAt != 0 && expiresAt <= block.timestamp) revert ArcPass__InvalidExpiry();
+
+        bytes32 existing = _activeClaim[subject][schemaId][msg.sender];
+        if (existing != bytes32(0)) {
+            Claim storage c = _claims[existing];
+            if (!c.revoked && (c.expiresAt == 0 || block.timestamp < c.expiresAt)) {
+                revert ArcPass__ActiveClaimExists(subject, schemaId, msg.sender);
+            }
+        }
+
+        claimId = keccak256(abi.encode(subject, schemaId, msg.sender, block.timestamp, _claimNonce++));
+
+        _claims[claimId] = Claim({
+            claimId:        claimId,
+            subject:        subject,
+            schemaId:       schemaId,
+            issuer:         msg.sender,
+            dataCommitment: dataCommitment,
+            issuedAt:       block.timestamp,
+            expiresAt:      expiresAt,
+            revoked:        false,
+            refUID:         refUID,
+            revokedAt:      0
+        });
+
+        _activeClaim[subject][schemaId][msg.sender] = claimId;
+
+        emit ClaimIssued(claimId, subject, msg.sender, schemaId);
+    }
+
     /// @notice Hook into AccessControl's _grantRole to maintain the issuer list.
-    /// @return bool True if the role was newly granted.
     function _grantRole(bytes32 role, address account) internal override returns (bool) {
         bool newly = super._grantRole(role, account);
         if (role == ISSUER_ROLE && newly && !_isIssuer[account]) {
@@ -187,7 +231,6 @@ contract AttestationRegistry is
     }
 
     /// @notice Hook into AccessControl's _revokeRole to maintain the issuer list.
-    /// @return bool True if the role was revoked.
     function _revokeRole(bytes32 role, address account) internal override returns (bool) {
         bool removed = super._revokeRole(role, account);
         if (role == ISSUER_ROLE && removed && _isIssuer[account]) {

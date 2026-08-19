@@ -46,7 +46,7 @@ contract AttestationRegistryTest is Test {
             abi.encodeCall(AttestationRegistry.initialize, (multisig, address(schemaProxy)))
         );
         registry = AttestationRegistry(address(proxy));
-        verifier = new PassportVerifier(address(proxy));
+        verifier = new PassportVerifier(address(proxy), address(0), address(0));
 
         vm.startPrank(multisig);
         registry.grantRole(AttestationRegistryTest.ISSUER_ROLE,  issuer);
@@ -58,7 +58,7 @@ contract AttestationRegistryTest is Test {
 
     // ── version() ──
     function test_version() public view {
-        assertEq(registry.version(), "1.0.0");
+        assertEq(registry.version(), "1.1.0");
     }
 
     // ── attest() happy path ──

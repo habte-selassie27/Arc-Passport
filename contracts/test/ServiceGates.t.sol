@@ -43,7 +43,7 @@ contract ServiceGatesTest is Test {
             abi.encodeCall(AttestationRegistry.initialize, (multisig, address(schemaProxy)))
         );
         registry = AttestationRegistry(address(proxy));
-        verifier = new PassportVerifier(address(proxy));
+        verifier = new PassportVerifier(address(proxy), address(0), address(0));
 
         vm.startPrank(multisig);
         registry.grantRole(ISSUER_ROLE,  issuer);

@@ -51,4 +51,38 @@ export const PASSPORT_VERIFIER_ABI = [
     outputs: [{ name: "", type: "bool", internalType: "bool" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "hasScoreSupport",
+    inputs: [],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getScore",
+    inputs: [
+      { name: "subject", type: "address", internalType: "address" },
+      { name: "scorerId", type: "uint16", internalType: "uint16" },
+    ],
+    outputs: [
+      { name: "score", type: "uint16", internalType: "uint16" },
+      { name: "isValid", type: "bool", internalType: "bool" },
+      { name: "isHuman", type: "bool", internalType: "bool" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "passesScorer",
+    inputs: [
+      { name: "subject", type: "address", internalType: "address" },
+      { name: "scorerId", type: "uint16", internalType: "uint16" },
+    ],
+    outputs: [
+      { name: "passes", type: "bool", internalType: "bool" },
+      { name: "reason", type: "string", internalType: "string" },
+    ],
+    stateMutability: "view",
+  },
 ] as const;

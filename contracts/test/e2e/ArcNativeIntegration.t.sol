@@ -50,7 +50,7 @@ contract ArcNativeIntegration is Test {
         );
         registry = AttestationRegistry(address(attProxy));
 
-        verifier = new PassportVerifier(address(attProxy));
+        verifier = new PassportVerifier(address(attProxy), address(0), address(0));
         batcher = new BatchAttestation(address(attProxy));
         delegator = new DelegatedAttestation(address(attProxy));
         expirations = new ExpiringClaims(address(attProxy));

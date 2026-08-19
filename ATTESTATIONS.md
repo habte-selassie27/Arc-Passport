@@ -276,33 +276,51 @@ Examples:
 
 Avoid creating dozens of credential types before there is actual demand.
 
-## 11. Selective Disclosure
+## 11. Selective Disclosure (V2)
 
-ArcPass V1 may use Merkle-based commitments for selective disclosure.
+ArcPass uses Merkle-based commitments for selective disclosure. Each claim's `dataCommitment` on-chain is the **Merkle root** of its field leaves, not a flat hash.
 
-Conceptually:
+### Merkle tree construction
 
-```
-Claim
-  ↓
-Merkle Tree
-  ├── Field A
-  ├── Field B
-  ├── Field C
-  └── Field D
-```
-
-A user may provide:
+Each field is encoded as a leaf:
 
 ```
-Field B
-+
-Merkle Proof
+leaf = keccak256(abi.encode(fieldName, fieldType, keccak256(abi.encode(fieldValue))))
 ```
 
-without exposing every field.
+The leaves form a standard binary Merkle tree (sorted pairs). The tree root is stored on-chain as `dataCommitment`.
 
-The verifier checks that the disclosed field belongs to the committed claim.
+### Field classifications
+
+| Type | Meaning | Displayed on public passport |
+|------|---------|------------------------------|
+| PUBLIC | Safe to display publicly | Yes |
+| PRIVATE | Only disclosed with subject authorization | No |
+| DERIVED | Computed from other fields, never stored | Computed |
+
+All field classifications are defined in `backend/src/constants/schemas.ts`.
+
+### Proof generation flow
+
+```
+1. Subject calls GET /attestation/:claimId/field/:fieldName/proof
+   (requires signed nonce — only the claim subject can generate proofs)
+2. Backend retrieves the IPFS payload, finds the field leaf index,
+   reconstructs the Merkle tree, and returns:
+   { leaf, proof, leafIndex, field: { name, type, value, classification } }
+3. Subject shares (leaf, proof, leafIndex) with the verifier
+4. Verifier calls GET /attestation/:claimId/field/:fieldName/verify
+   with ?leaf=...&leafIndex=...&proof=...
+5. Backend calls PassportVerifier.verifyField() on-chain → { valid: boolean }
+```
+
+### Field verification (on-chain)
+
+`PassportVerifier.verifyField(claimId, fieldLeaf, proof, leafIndex)` checks that the leaf belongs to the committed Merkle root without revealing other fields.
+
+### Legacy claims
+
+Claims issued before V2 used `keccak256(flatAbiEncodedData)` as `dataCommitment` — they have no Merkle tree. The frontend shows a "Selective disclosure not available for legacy claims" badge for these.
 
 ## 12. Privacy Rules
 
@@ -493,27 +511,83 @@ const result = await arcpass.verifyCredential(credentialId);
 
 The SDK should hide unnecessary blockchain complexity.
 
-## 19. Reputation Signals
+## 19. Trust Score & Reputation Signals
 
-Reputation should initially be represented through transparent, verifiable signals.
+ArcPass computes a **transparent, weighted trust score** from on-chain attestations.
+The scoring model is inspired by Human Passport's composable trust layer pattern.
 
-Prefer:
-
-```
-14 valid attestations
-6 unique issuers
-4 Arc projects
-3 builder credentials
-2 hackathon credentials
-```
-
-Avoid an opaque:
+### Scoring Model
 
 ```
-Reputation: 87/100
+Trust Score = Σ(categoryWeight × (credentialScore + issuerBonus))
 ```
 
-unless the scoring model is transparent, defensible, and genuinely useful.
+- **Category weights**: Identity/KYC = 1.0, Credentials/Reputation/Employment = 0.7-0.8, Education = 0.5, Social = 0.4, Custom = 0.3
+- **Credential score**: Each valid attestation contributes base points
+- **Issuer bonus**: Bonus for unique issuers within a category
+- **Schema bonuses**: Government ID, liveness, KYC, humanity proofs get 1.3-1.5x multiplier
+
+### Score Display
+
+The Passport page shows a composite score (0-100) with:
+
+```
+Trust Score
+82 / 100
+████████████████████░░░░  (82% of max)
+
+Attestations: 18
+Unique issuers: 6
+Categories: 7/9
+Status: Passed (threshold: 20)
+
+Category Breakdown
+Identity & Passport     3 claims · 45.0 pts
+KYC / Compliance        2 claims · 38.0 pts
+Professional Credentials 4 claims · 32.0 pts
+Reputation & Trust      3 claims · 28.0 pts
+Education               2 claims · 18.0 pts
+Social Verification     3 claims · 15.0 pts
+```
+
+### Scoring Policies
+
+| Policy | Threshold | Use Case |
+|--------|-----------|----------|
+| Default | 20 | General purpose |
+| High Security | 40 | KYC-gated applications |
+| Low Friction | 10 | Quick verification |
+
+### Developer API
+
+Third-party apps verify wallets via a single HTTP call:
+
+```
+GET /v1/verify/:address?policy=default&threshold=20
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "passed": true,
+    "score": 82,
+    "threshold": 20,
+    "attestationCount": 18,
+    "uniqueIssuers": 6,
+    "activeCategories": ["identity", "kyc", "credentials", ...]
+  }
+}
+```
+
+### Design Principles
+
+1. **Transparent**: Score is computed from visible, on-chain attestations
+2. **Configurable**: Applications set their own thresholds and policies
+3. **Additive**: Score increases with more attestations from more issuers
+4. **Not opaque**: Never an AI score or hidden weighting — all factors are visible
+5. **Verifiable**: Score derives from on-chain state, not backend cache
 
 Reputation is derived from attestations.
 

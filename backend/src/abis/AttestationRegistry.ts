@@ -65,6 +65,19 @@ export const ATTESTATION_REGISTRY_ABI = [
   },
   {
     type: "function",
+    name: "attestWithRef",
+    inputs: [
+      { name: "subject", type: "address", internalType: "address" },
+      { name: "schemaId", type: "bytes32", internalType: "bytes32" },
+      { name: "dataCommitment", type: "bytes32", internalType: "bytes32" },
+      { name: "expiresAt", type: "uint256", internalType: "uint256" },
+      { name: "refUID", type: "bytes32", internalType: "bytes32" },
+    ],
+    outputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "revoke",
     inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
     outputs: [],
@@ -83,6 +96,8 @@ export const ATTESTATION_REGISTRY_ABI = [
       { name: "issuedAt", type: "uint256", internalType: "uint256" },
       { name: "expiresAt", type: "uint256", internalType: "uint256" },
       { name: "revoked", type: "bool", internalType: "bool" },
+      { name: "refUID", type: "bytes32", internalType: "bytes32" },
+      { name: "revokedAt", type: "uint256", internalType: "uint256" },
     ],
     stateMutability: "view",
   },
@@ -91,6 +106,13 @@ export const ATTESTATION_REGISTRY_ABI = [
     name: "isValid",
     inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
     outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getIssuers",
+    inputs: [],
+    outputs: [{ name: "", type: "address[]", internalType: "address[]" }],
     stateMutability: "view",
   },
   {

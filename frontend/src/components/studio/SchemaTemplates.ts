@@ -160,4 +160,5 @@ export const SCHEMA_TEMPLATES: Record<ServiceKey, SchemaTemplate[]> = {
   education:   [DEGREE_TEMPLATE],
   social:      [SOCIAL_ACCOUNT_TEMPLATE],
   custom:      [],
+  zkPassport:  [],
 };

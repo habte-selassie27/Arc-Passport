@@ -518,26 +518,94 @@ Do not introduce the following without a demonstrated requirement:
 
 The default should always be the simplest architecture that works.
 
-## 19. Future Architecture
+## 19. Privacy Architecture
 
-ArcPass should remain extensible enough to support future privacy features.
+### Selective Disclosure (V2 — implemented)
 
-Potential future layers:
+Each claim's `dataCommitment` on-chain is the Merkle root of its field leaves.
+The full payload (field values, leaves, tree structure) is stored on IPFS
+and indexed locally in the claim payload store.
+
+```
+Issuance → Merkle Tree → IPFS payload + On-chain root
+Disclosure → Subject generates Merkle proof → Shares with verifier
+Verification → On-chain verifyField() → Boolean result
+```
+
+Backend endpoints:
+- `GET /attestation/:claimId/fields` — field classifications (subject-only)
+- `GET /attestation/:claimId/field/:fieldName/proof` — Merkle proof (subject-only)
+- `GET /attestation/:claimId/field/:fieldName/verify` — on-chain verification (public)
+
+### Future layers
 
 ```
 ArcPass
    ↓
-Attestation
+Attestation (V1)
    ↓
-Verification
+Verification (V1)
    ↓
-Selective Disclosure
+Selective Disclosure (V2 — implemented)
    ↓
-ZK Proofs
+ZK Proofs (V3 — roadmap)
    ↓
-FHE / Private Computation
+FHE / Private Computation (V4 — aspirational)
 ```
 
-These are future capabilities, not requirements for the core V1 architecture.
+## 20. Trust Scoring Architecture
 
-The current system must not become unnecessarily complex in preparation for them.
+### Weighted Trust Score Engine
+
+ArcPass computes a composite trust score from on-chain attestations using
+a weighted scoring model inspired by Human Passport's composable trust layer.
+
+```
+On-chain Attestations
+        ↓
+Category Weights (identity=1.0, kyc=1.0, credentials=0.8, ...)
+        ↓
+Credential Scores (base points × schema bonuses)
+        ↓
+Issuer Bonuses (unique issuers per category)
+        ↓
+Composite Score (0-100)
+        ↓
+Threshold Check → Pass/Fail
+```
+
+### Scoring Policies
+
+| Policy | Threshold | Use Case |
+|--------|-----------|----------|
+| Default | 20 | General purpose verification |
+| High Security | 40 | KYC-gated applications |
+| Low Friction | 10 | Quick verification, airdrops |
+
+### Developer Verification API
+
+```
+GET  /v1/verify/:address           — single address verification
+POST /v1/verify/batch              — batch verification (up to 50)
+```
+
+Query parameters:
+- `policy` — scoring preset (default | high-security | low-friction)
+- `threshold` — custom threshold override (0-100)
+- `breakdown` — include category breakdown in response
+
+### Frontend Display
+
+The Passport page shows:
+- Composite score with progress bar
+- Pass/fail status with threshold
+- Per-category breakdown with claim counts and points
+- Active categories visualization
+
+### Architecture Principles
+
+1. **Transparent**: Score computed from visible, on-chain attestations
+2. **Configurable**: Applications set their own thresholds
+3. **Additive**: More attestations = higher score
+4. **Not opaque**: All weighting factors are visible and documented
+5. **Backend-computed**: Score is advisory; verification always re-checks on-chain

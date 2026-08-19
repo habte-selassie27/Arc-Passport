@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRequests, type AttestationRequest } from "../../hooks/useRequests";
 import { Card } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
@@ -15,10 +15,7 @@ const STATUS_MAP: Record<string, ClaimStatus> = {
 export function CredentialRequestList({ address }: { address: `0x${string}` }) {
   const { requests, isLoading, error, load, decide } = useRequests(address);
   const [busy, setBusy] = useState<string | null>(null);
-
-  useEffect(() => {
-    void load("issuer");
-  }, [load]);
+  const loaded = requests.length > 0 || error || isLoading;
 
   const handleDecide = async (id: string, decision: "approved" | "rejected") => {
     setBusy(id);
@@ -38,6 +35,14 @@ export function CredentialRequestList({ address }: { address: `0x${string}` }) {
         Review requests from users. Approve or reject, then issue via the attestation form above.
       </p>
 
+      {!loaded && (
+        <div style={{ textAlign: "center" }}>
+          <Button variant="ghost" size="sm" onClick={() => void load("issuer")}>
+            Load requests
+          </Button>
+        </div>
+      )}
+
       {isLoading && requests.length === 0 && (
         <div className="flex items-center justify-center gap-2 c-muted t-sm" style={{ padding: "var(--space-6)" }}>
           <span className="spinner" style={{ width: 12, height: 12 }} aria-hidden="true" />
@@ -51,7 +56,7 @@ export function CredentialRequestList({ address }: { address: `0x${string}` }) {
         </div>
       )}
 
-      {!isLoading && !error && requests.length === 0 && (
+      {!isLoading && !error && requests.length === 0 && loaded && (
         <EmptyState
           title="No credential requests yet"
           body="When users request credentials from this issuer, they will appear here."
