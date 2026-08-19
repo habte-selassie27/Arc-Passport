@@ -392,7 +392,10 @@ export function RegisterForm() {
   useEffect(() => {
     if (isPending && !hash) setTxPhase("signing");
     else if (hash && isConfirming) setTxPhase("confirming");
-    else if (isConfirmed) setTxPhase("confirmed");
+    else if (isConfirmed) {
+      setTxPhase("confirmed");
+      sessionStorage.removeItem("arcpass_register_check_done");
+    }
     else if (regError) {
       setTxPhase("failed");
       setTxError(parseContractError(regError));

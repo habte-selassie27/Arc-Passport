@@ -14,8 +14,6 @@ import { Button } from "../components/ui/Button";
 import { Spinner } from "../components/ui/Spinner";
 import { RegisterForm } from "../components/forms/RegisterForm";
 
-// ── IdentityRegistry ABI (for re-registration guard) ──
-
 const IDENTITY_REGISTRY_ABI = [
   {
     type: "function",
@@ -29,37 +27,39 @@ const IDENTITY_REGISTRY_ABI = [
   },
 ] as const;
 
-// ── Main Page ──
+const STORAGE_KEY = "arcpass_register_check_done";
 
 export function RegisterPage() {
   const { isConnected, address } = useWallet();
-  const everTimedOut = useRef(false);
+  const [checkDone, setCheckDone] = useState(() => {
+    return sessionStorage.getItem(STORAGE_KEY) === "1";
+  });
 
-  // Re-registration guard — single fetch, no refetch on focus/refocus
   const { isLoading: checkingIdentity, isError: checkFailed } = useReadContract({
     address: ADDRESSES.identityRegistry,
     abi: IDENTITY_REGISTRY_ABI,
     functionName: "getIdentity",
     args: address ? [address] : undefined,
     query: {
-      enabled: !!isConnected && !!address && !!ADDRESSES.identityRegistry,
+      enabled: !!isConnected && !!address && !!ADDRESSES.identityRegistry && !checkDone,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       retry: false,
     },
   });
 
-  // Timeout: if check takes >4s, show the form — and never go back
   useEffect(() => {
-    if (everTimedOut.current) return;
+    if (checkDone) return;
+    if (checkFailed) { setCheckDone(true); sessionStorage.setItem(STORAGE_KEY, "1"); return; }
     if (!checkingIdentity) return;
     const timer = setTimeout(() => {
-      everTimedOut.current = true;
+      setCheckDone(true);
+      sessionStorage.setItem(STORAGE_KEY, "1");
     }, 4000);
     return () => clearTimeout(timer);
-  }, [checkingIdentity]);
+  }, [checkingIdentity, checkFailed, checkDone]);
 
-  const showForm = everTimedOut.current || !checkingIdentity || checkFailed;
+  const showForm = checkDone || checkFailed;
 
   if (!isConnected) {
     return (
