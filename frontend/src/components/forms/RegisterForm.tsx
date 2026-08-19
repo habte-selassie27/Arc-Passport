@@ -440,13 +440,12 @@ export function RegisterForm() {
         }
       }
 
-      // Pin the metadata JSON to IPFS
-      const metadataRes = await fetch(apiUrl("/upload"), {
+      // Pin the metadata JSON to IPFS (public endpoint — no auth needed)
+      const metadataRes = await fetch(apiUrl("/upload/json"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: btoa(JSON.stringify(profile)),
-          mimeType: "application/json",
+          data: profile,
           name: `passport-${address}.json`,
         }),
       });
