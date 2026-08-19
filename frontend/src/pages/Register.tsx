@@ -2,7 +2,7 @@
  * RegisterPage — Identity registration with production-grade UX.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWallet } from "../contexts/WalletContext";
 import { useReadContract } from "wagmi";
 import { Link } from "react-router-dom";
@@ -33,28 +33,33 @@ const IDENTITY_REGISTRY_ABI = [
 
 export function RegisterPage() {
   const { isConnected, address } = useWallet();
-  const [checkTimedOut, setCheckTimedOut] = useState(false);
+  const everTimedOut = useRef(false);
 
-  // Re-registration guard — loading state
+  // Re-registration guard — single fetch, no refetch on focus/refocus
   const { isLoading: checkingIdentity, isError: checkFailed } = useReadContract({
     address: ADDRESSES.identityRegistry,
     abi: IDENTITY_REGISTRY_ABI,
     functionName: "getIdentity",
     args: address ? [address] : undefined,
-    query: { enabled: !!isConnected && !!address && !!ADDRESSES.identityRegistry },
+    query: {
+      enabled: !!isConnected && !!address && !!ADDRESSES.identityRegistry,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: false,
+    },
   });
 
-  // Timeout: if check takes >5s, show the form anyway
+  // Timeout: if check takes >4s, show the form — and never go back
   useEffect(() => {
-    if (!checkingIdentity) {
-      setCheckTimedOut(false);
-      return;
-    }
-    const timer = setTimeout(() => setCheckTimedOut(true), 5000);
+    if (everTimedOut.current) return;
+    if (!checkingIdentity) return;
+    const timer = setTimeout(() => {
+      everTimedOut.current = true;
+    }, 4000);
     return () => clearTimeout(timer);
   }, [checkingIdentity]);
 
-  const showForm = !checkingIdentity || checkTimedOut || checkFailed;
+  const showForm = everTimedOut.current || !checkingIdentity || checkFailed;
 
   if (!isConnected) {
     return (

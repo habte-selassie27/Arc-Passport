@@ -360,22 +360,28 @@ export function RegisterForm() {
   const [txError, setTxError] = useState<string | null>(null);
 
   // Re-registration guard
+  const everTimedOut = useRef(false);
   const { data: existingIdentity, isLoading: checkingIdentity } = useReadContract({
     address: ADDRESSES.identityRegistry,
     abi: IDENTITY_REGISTRY_ABI,
     functionName: "getIdentity",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && !!ADDRESSES.identityRegistry },
+    query: {
+      enabled: !!address && !!ADDRESSES.identityRegistry,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: false,
+    },
   });
 
-  const [checkTimedOut, setCheckTimedOut] = useState(false);
   useEffect(() => {
-    if (!checkingIdentity) { setCheckTimedOut(false); return; }
-    const t = setTimeout(() => setCheckTimedOut(true), 5000);
+    if (everTimedOut.current) return;
+    if (!checkingIdentity) return;
+    const t = setTimeout(() => { everTimedOut.current = true; }, 4000);
     return () => clearTimeout(t);
   }, [checkingIdentity]);
 
-  const checkDone = !checkingIdentity || checkTimedOut;
+  const checkDone = everTimedOut.current || !checkingIdentity;
   const alreadyRegistered = checkDone && existingIdentity && Number(existingIdentity[0]) > 0;
 
   // Registration hook
