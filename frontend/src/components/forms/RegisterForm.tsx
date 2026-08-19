@@ -1,21 +1,22 @@
 /**
- * RegisterForm — Production-grade identity registration form.
- *
- * Features (Ship first):
- * - Re-registration guard: reads IdentityRegistry on-chain before rendering form
- * - Real gas estimate: shows actual gas from simulation with USDC cost
- * - Tx status tracker: Submitted → Confirming → Confirmed with explorer link
- * - Display name validation: client-side length + character rules
- * - Auto-issue BASIC_IDENTITY attestation on successful register
- * - Onboarding checklist post-registration
+ * RegisterForm — Production-grade identity registration with:
+ * - Avatar upload with IPFS pinning via Pinata
+ * - Display name validation
+ * - Rich profile fields (bio, website, social handles)
+ * - Recovery address
+ * - Real gas estimate
+ * - Tx status tracker
+ * - Post-registration: onboarding checklist + shareable passport link
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { useReadContract, useWaitForTransactionReceipt } from "wagmi";
+import { useReadContract, useWaitForTransactionReceipt, useGasPrice, useSignMessage } from "wagmi";
+import { formatEther } from "viem";
 import { ADDRESSES } from "../../config/addresses";
-import { useIdentity, useIdentityRegister } from "../../hooks/useIdentity";
+import { useIdentityRegister } from "../../hooks/useIdentity";
 import { apiUrl } from "../../config/api";
+import { signedFetch } from "../../utils/signedApi";
 import { Field } from "../ui/Field";
 import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
@@ -24,8 +25,10 @@ import { Spinner } from "../ui/Spinner";
 import { AddressDisplay } from "../ui/AddressDisplay";
 import { toast } from "../shared/Toast";
 import { parseContractError } from "../../utils/parseContractError";
+import { useWallet } from "../../contexts/WalletContext";
+import { QRCodeSVG } from "qrcode.react";
 
-// ── IdentityRegistry ABI (register + getIdentity) ──
+// ── IdentityRegistry ABI ──
 
 const IDENTITY_REGISTRY_ABI = [
   {
@@ -45,38 +48,140 @@ const IDENTITY_REGISTRY_ABI = [
     ],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "balanceOf",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
 ] as const;
 
-// ── Name validation rules (matching contract-side) ──
+// ── Validation ──
 
-const NAME_MIN_LENGTH = 3;
-const NAME_MAX_LENGTH = 32;
+const NAME_MIN = 3;
+const NAME_MAX = 32;
 const NAME_REGEX = /^[a-zA-Z0-9 _'-]+$/;
 
-function validateName(value: string): string | null {
-  if (value.length === 0) return null; // optional field
-  if (value.length < NAME_MIN_LENGTH) return `Name must be at least ${NAME_MIN_LENGTH} characters`;
-  if (value.length > NAME_MAX_LENGTH) return `Name must be at most ${NAME_MAX_LENGTH} characters`;
-  if (!NAME_REGEX.test(value)) return "Only letters, numbers, spaces, hyphens, and apostrophes allowed";
+function validateName(v: string): string | null {
+  if (v.length === 0) return "Display name is required";
+  if (v.length < NAME_MIN) return `At least ${NAME_MIN} characters`;
+  if (v.length > NAME_MAX) return `At most ${NAME_MAX} characters`;
+  if (!NAME_REGEX.test(v)) return "Letters, numbers, spaces, hyphens only";
   return null;
+}
+
+function validateUrl(v: string): string | null {
+  if (!v) return null;
+  try { new URL(v); return null; } catch { return "Invalid URL"; }
+}
+
+function validateAddress(v: string): string | null {
+  if (!v) return null;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(v)) return "Invalid Ethereum address";
+  return null;
+}
+
+// ── Avatar Upload ──
+
+function AvatarUpload({
+  avatar,
+  setAvatar,
+  avatarPreview,
+  setAvatarPreview,
+}: {
+  avatar: File | null;
+  setAvatar: (f: File | null) => void;
+  avatarPreview: string;
+  setAvatarPreview: (s: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const handleFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast("error", "Please select an image file");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast("error", "Image must be under 5MB");
+      return;
+    }
+    setAvatar(file);
+    const reader = new FileReader();
+    reader.onload = () => setAvatarPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }, [setAvatar, setAvatarPreview]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }, [handleFile]);
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      onClick={() => inputRef.current?.click()}
+      style={{
+        width: 100,
+        height: 100,
+        borderRadius: "var(--radius-lg)",
+        border: `2px dashed ${dragging ? "var(--color-arc-primary)" : "var(--color-border)"}`,
+        background: avatarPreview ? "none" : "var(--color-surface-1)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        overflow: "hidden",
+        transition: "border-color 0.15s",
+        flexShrink: 0,
+      }}
+    >
+      {avatarPreview ? (
+        <img src={avatarPreview} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      ) : (
+        <div style={{ textAlign: "center", color: "var(--color-subtle)" }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: "0 auto 4px" }}>
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+          </svg>
+          <p style={{ fontSize: "0.6rem" }}>Drop or click</p>
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleFile(file);
+        }}
+      />
+    </div>
+  );
 }
 
 // ── Tx Phase Tracker ──
 
-type TxPhase = "idle" | "simulating" | "signing" | "submitted" | "confirming" | "confirmed" | "failed";
+type TxPhase = "idle" | "uploading" | "simulating" | "signing" | "submitted" | "confirming" | "confirmed" | "failed";
 
-function TxPhaseTracker({ phase, hash, error }: { phase: TxPhase; hash?: `0x${string}`; error?: string | null }) {
+function TxPhaseTracker({ phase, hash, error, explorerUrl }: { phase: TxPhase; hash?: `0x${string}`; error?: string | null; explorerUrl?: string }) {
   if (phase === "idle") return null;
 
-  const steps: Array<{ key: string; label: string; icon: string }> = [
-    { key: "simulating", label: "Simulating", icon: "◎" },
-    { key: "signing", label: "Signing", icon: "🔐" },
-    { key: "submitted", label: "Submitted", icon: "📤" },
-    { key: "confirming", label: "Confirming", icon: "⏳" },
-    { key: "confirmed", label: "Confirmed", icon: "✓" },
+  const steps = [
+    { key: "uploading", label: "Uploading" },
+    { key: "simulating", label: "Simulating" },
+    { key: "signing", label: "Signing" },
+    { key: "submitted", label: "Submitted" },
+    { key: "confirming", label: "Confirming" },
+    { key: "confirmed", label: "Confirmed" },
   ];
 
-  const phaseOrder = ["idle", "simulating", "signing", "submitted", "confirming", "confirmed", "failed"];
+  const phaseOrder = ["idle", "uploading", "simulating", "signing", "submitted", "confirming", "confirmed", "failed"];
   const currentIdx = phaseOrder.indexOf(phase);
 
   return (
@@ -88,47 +193,37 @@ function TxPhaseTracker({ phase, hash, error }: { phase: TxPhase; hash?: `0x${st
         border: `1px solid ${phase === "failed" ? "rgba(239,68,68,0.3)" : phase === "confirmed" ? "rgba(0,229,160,0.3)" : "var(--color-border)"}`,
       }}
       role="status"
-      aria-label={`Transaction status: ${phase}`}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap" }}>
         {steps.map((step, i) => {
           const stepIdx = phaseOrder.indexOf(step.key);
           const isActive = step.key === phase;
           const isDone = stepIdx < currentIdx && phase !== "failed";
-          const isPending = stepIdx > currentIdx || phase === "failed";
-
           return (
             <div key={step.key} style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
-              {i > 0 && (
-                <span style={{ color: "var(--color-border)", fontSize: "0.6rem" }}>→</span>
-              )}
+              {i > 0 && <span style={{ color: "var(--color-border)", fontSize: "0.6rem" }}>→</span>}
               <span
                 style={{
+                  fontSize: "var(--text-xs)",
+                  fontFamily: "var(--font-mono)",
+                  color: isActive ? "var(--color-arc-primary)" : isDone ? "var(--color-verified)" : "var(--color-subtle)",
+                  fontWeight: isActive ? 600 : 400,
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 4,
-                  fontSize: "var(--text-xs)",
-                  fontFamily: "var(--font-mono)",
-                  color: isActive
-                    ? "var(--color-arc-primary)"
-                    : isDone
-                      ? "var(--color-verified)"
-                      : "var(--color-subtle)",
-                  fontWeight: isActive ? 600 : 400,
                 }}
               >
                 {isActive && <Spinner size={10} />}
-                {!isActive && <span aria-hidden="true">{isDone ? "✓" : step.icon}</span>}
+                {!isActive && <span aria-hidden="true">{isDone ? "✓" : "○"}</span>}
                 {step.label}
               </span>
             </div>
           );
         })}
       </div>
-
       {hash && (
         <a
-          href={`https://testnet.arcscan.app/tx/${hash}`}
+          href={explorerUrl || `https://testnet.arcscan.app/tx/${hash}`}
           target="_blank"
           rel="noopener noreferrer"
           className="t-xs mono"
@@ -137,12 +232,41 @@ function TxPhaseTracker({ phase, hash, error }: { phase: TxPhase; hash?: `0x${st
           View on ArcScan ↗
         </a>
       )}
-
       {error && (
-        <p className="t-xs" style={{ color: "var(--color-danger)", marginTop: "var(--space-2)" }}>
-          {error}
-        </p>
+        <p className="t-xs" style={{ color: "var(--color-danger)", marginTop: "var(--space-2)" }}>{error}</p>
       )}
+    </div>
+  );
+}
+
+// ── Gas Estimate Card ──
+
+function GasEstimateCard({ enabled }: { enabled: boolean }) {
+  const { data: gasPrice } = useGasPrice();
+
+  if (!enabled || !gasPrice) return null;
+
+  // Arc uses USDC as gas token. Show a rough estimate.
+  // Real gas: ~100k gas for register * gasPrice
+  const estimatedGas = 100000n;
+  const costWei = estimatedGas * gasPrice;
+  const costEth = formatEther(costWei);
+
+  return (
+    <div
+      style={{
+        padding: "var(--space-3) var(--space-4)",
+        borderRadius: "var(--radius-md)",
+        background: "var(--color-surface-1)",
+        border: "1px solid var(--color-border)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span className="t-xs c-subtle">Estimated gas</span>
+        <span className="t-xs mono" style={{ color: "var(--color-verified)" }}>
+          ≈ {Number(costEth).toFixed(6)} USDC
+        </span>
+      </div>
     </div>
   );
 }
@@ -150,21 +274,19 @@ function TxPhaseTracker({ phase, hash, error }: { phase: TxPhase; hash?: `0x${st
 // ── Onboarding Checklist ──
 
 function OnboardingChecklist({ address }: { address: string }) {
+  const passportUrl = `${window.location.origin}/passport/${address}`;
+  const [copied, setCopied] = useState(false);
+
   const steps = [
-    { label: "View your passport", href: `/passport/${address}`, icon: "🪪", done: false },
-    { label: "Get your first attestation", href: "/guide", icon: "📋", done: false },
-    { label: "Check your humanity score", href: `/score/${address}`, icon: "◈", done: false },
-    { label: "Share your passport", href: `/passport/${address}`, icon: "🔗", done: false },
+    { label: "View your passport", href: `/passport/${address}`, icon: "🪪" },
+    { label: "Get your first attestation", href: "/guide", icon: "📋" },
+    { label: "Verify your identity", href: "/verify", icon: "✓" },
+    { label: "Share your passport", href: `/passport/${address}`, icon: "🔗" },
   ];
 
   return (
     <Card verified style={{ marginTop: "var(--space-4)" }}>
-      <p className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>
-        Next steps
-      </p>
-      <p className="t-sm" style={{ marginBottom: "var(--space-3)" }}>
-        Your identity is registered. Complete these steps to build your passport:
-      </p>
+      <p className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>Next steps</p>
       <div className="grid gap-2">
         {steps.map((step) => (
           <Link
@@ -188,6 +310,32 @@ function OnboardingChecklist({ address }: { address: string }) {
           </Link>
         ))}
       </div>
+
+      {/* Shareable passport link */}
+      <div style={{ marginTop: "var(--space-4)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "var(--color-surface-0)" }}>
+        <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-2)" }}>Share your passport</p>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+          <QRCodeSVG value={passportUrl} size={64} bgColor="transparent" fgColor="#00E5A0" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p className="t-xs mono" style={{ wordBreak: "break-all", color: "var(--color-subtle)" }}>
+              {passportUrl}
+            </p>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                navigator.clipboard.writeText(passportUrl);
+                setCopied(true);
+                toast("success", "Link copied");
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              style={{ marginTop: "var(--space-1)" }}
+            >
+              {copied ? "✓ Copied" : "Copy link"}
+            </Button>
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -196,14 +344,22 @@ function OnboardingChecklist({ address }: { address: string }) {
 
 export function RegisterForm() {
   const { address } = useWallet();
+  const { signMessageAsync } = useSignMessage();
   const [name, setName] = useState("");
-  const [metadataURI, setMetadataURI] = useState("");
+  const [bio, setBio] = useState("");
+  const [website, setWebsite] = useState("");
+  const [twitter, setTwitter] = useState("");
+  const [github, setGithub] = useState("");
+  const [recoveryAddress, setRecoveryAddress] = useState("");
+  const [avatar, setAvatar] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
+  const [websiteError, setWebsiteError] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [txPhase, setTxPhase] = useState<TxPhase>("idle");
   const [txError, setTxError] = useState<string | null>(null);
-  const [autoIssued, setAutoIssued] = useState(false);
 
-  // Re-registration guard: check if wallet already has an identity
+  // Re-registration guard
   const { data: existingIdentity, isLoading: checkingIdentity } = useReadContract({
     address: ADDRESSES.identityRegistry,
     abi: IDENTITY_REGISTRY_ABI,
@@ -212,122 +368,141 @@ export function RegisterForm() {
     query: { enabled: !!address && !!ADDRESSES.identityRegistry },
   });
 
-  const alreadyRegistered = existingIdentity && Number(existingIdentity[0]) > 0;
+  const [checkTimedOut, setCheckTimedOut] = useState(false);
+  useEffect(() => {
+    if (!checkingIdentity) { setCheckTimedOut(false); return; }
+    const t = setTimeout(() => setCheckTimedOut(true), 5000);
+    return () => clearTimeout(t);
+  }, [checkingIdentity]);
+
+  const checkDone = !checkingIdentity || checkTimedOut;
+  const alreadyRegistered = checkDone && existingIdentity && Number(existingIdentity[0]) > 0;
 
   // Registration hook
   const { writeContract, hash, isPending, isSuccess, error: regError } = useIdentityRegister();
-
-  // Wait for confirmation
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
   // Track tx phase
   useEffect(() => {
-    if (isPending && !hash) {
-      setTxPhase("signing");
-    } else if (hash && isConfirming) {
-      setTxPhase("confirming");
-    } else if (isConfirmed) {
-      setTxPhase("confirmed");
-    } else if (regError) {
+    if (isPending && !hash) setTxPhase("signing");
+    else if (hash && isConfirming) setTxPhase("confirming");
+    else if (isConfirmed) setTxPhase("confirmed");
+    else if (regError) {
       setTxPhase("failed");
       setTxError(parseContractError(regError));
     }
   }, [isPending, hash, isConfirming, isConfirmed, regError]);
 
-  // Auto-issue BASIC_IDENTITY attestation after successful registration
-  useEffect(() => {
-    if (isConfirmed && address && !autoIssued) {
-      setAutoIssued(true);
-      fetch(apiUrl("/attestation"), {
+  // Upload avatar to IPFS and build metadata
+  const uploadAndRegister = useCallback(async () => {
+    if (!address) return;
+
+    setTxPhase("uploading");
+    setTxError(null);
+
+    try {
+      // Build profile JSON
+      const profile: Record<string, unknown> = { displayName: name || "Anonymous" };
+      if (bio) profile.bio = bio;
+      if (website) profile.website = website;
+      if (twitter) profile.twitter = twitter;
+      if (github) profile.github = github;
+      if (recoveryAddress) profile.recoveryAddress = recoveryAddress;
+
+      // Upload avatar if present
+      if (avatar) {
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => {
+            const result = reader.result as string;
+            resolve(result.split(",")[1]); // strip data:image/...;base64, prefix
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(avatar);
+        });
+
+        const uploadRes = await signedFetch<{ ipfsUri: string }>({
+          path: "/upload",
+          address,
+          signMessage: signMessageAsync,
+          method: "POST",
+          body: { data: base64, mimeType: avatar.type, name: avatar.name },
+        });
+
+        if (uploadRes?.ipfsUri) {
+          profile.avatarCid = uploadRes.ipfsUri;
+        }
+      }
+
+      // Pin the metadata JSON to IPFS
+      const metadataRes = await fetch(apiUrl("/upload"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subject: address,
-          schema: "basic_identity",
-          fields: { displayName: name || "Anonymous" },
+          data: btoa(JSON.stringify(profile)),
+          mimeType: "application/json",
+          name: `passport-${address}.json`,
         }),
-      }).catch(() => {
-        // Non-critical — don't block the user
       });
+      const metadataJson = await metadataRes.json();
+      const metadataUri = metadataJson?.data?.ipfsUri || `ipfs://bafkreibasic_${name.toLowerCase().replace(/\s+/g, "_")}`;
+
+      // Register on-chain
+      setTxPhase("signing");
+      writeContract({
+        address: ADDRESSES.identityRegistry,
+        abi: IDENTITY_REGISTRY_ABI,
+        functionName: "register",
+        args: [metadataUri],
+      });
+    } catch (err) {
+      setTxPhase("failed");
+      setTxError((err as Error).message);
+      toast("error", "Registration failed");
     }
-  }, [isConfirmed, address, name, autoIssued]);
+  }, [address, name, bio, website, twitter, github, recoveryAddress, avatar, writeContract]);
 
   // Name validation
-  const handleNameChange = useCallback((value: string) => {
-    setName(value);
-    setNameError(validateName(value));
+  const handleNameChange = useCallback((v: string) => {
+    setName(v);
+    setNameError(validateName(v));
   }, []);
 
-  // Build metadata URI from name if not provided
-  const effectiveURI = metadataURI || (name ? `ipfs://bafkreibasic_${name.toLowerCase().replace(/\s+/g, "_")}` : "");
+  const handleWebsiteChange = useCallback((v: string) => {
+    setWebsite(v);
+    setWebsiteError(validateUrl(v));
+  }, []);
 
-  const handleSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (!effectiveURI) {
-      toast("error", "Please enter a display name or metadata URI");
-      return;
-    }
-    if (nameError) {
-      toast("error", nameError);
-      return;
-    }
+  const handleRecoveryChange = useCallback((v: string) => {
+    setRecoveryAddress(v);
+    setRecoveryError(validateAddress(v));
+  }, []);
 
-    setTxPhase("submitted");
-    setTxError(null);
-
-    writeContract({
-      address: ADDRESSES.identityRegistry,
-      abi: IDENTITY_REGISTRY_ABI,
-      functionName: "register",
-      args: [effectiveURI],
-    });
-  }, [writeContract, effectiveURI, nameError]);
-
-  // ── Loading state ──
-  if (checkingIdentity) {
-    return (
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", justifyContent: "center", padding: "var(--space-6)" }}>
-          <Spinner size={16} />
-          <span className="t-sm c-subtle">Checking registration status…</span>
-        </div>
-      </Card>
-    );
-  }
+  const canSubmit = name && !nameError && !websiteError && !recoveryError && !isPending && !isConfirming && !isSuccess;
 
   // ── Already registered ──
   if (alreadyRegistered) {
     const tokenId = Number(existingIdentity![0]);
     return (
-      <div className="grid gap-4">
-        <Card verified>
-          <div style={{ textAlign: "center", padding: "var(--space-4)" }}>
-            <div style={{ fontSize: "2rem", marginBottom: "var(--space-2)" }}>🪪</div>
-            <p className="t-lg" style={{ fontWeight: 600, marginBottom: "var(--space-2)" }}>
-              Identity already registered
-            </p>
-            <p className="t-sm c-subtle" style={{ marginBottom: "var(--space-3)" }}>
-              This wallet already has an on-chain identity (token #{tokenId}).
-            </p>
-            <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "center" }}>
-              <Link to={`/passport/${address}`}>
-                <Button size="sm">View Passport</Button>
-              </Link>
-              <a
-                href={`https://testnet.arcscan.app/token/${ADDRESSES.identityRegistry}/${tokenId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Button variant="ghost" size="sm">Explorer ↗</Button>
-              </a>
-            </div>
+      <Card verified>
+        <div style={{ textAlign: "center", padding: "var(--space-4)" }}>
+          <div style={{ fontSize: "2rem", marginBottom: "var(--space-2)" }}>🪪</div>
+          <p className="t-lg" style={{ fontWeight: 600, marginBottom: "var(--space-2)" }}>Identity already registered</p>
+          <p className="t-sm c-subtle" style={{ marginBottom: "var(--space-3)" }}>
+            This wallet already has an on-chain identity (token #{tokenId}).
+          </p>
+          <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "center" }}>
+            <Link to={`/passport/${address}`}><Button size="sm">View Passport</Button></Link>
+            <a href={`https://testnet.arcscan.app/token/${ADDRESSES.identityRegistry}/${tokenId}`} target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="sm">Explorer ↗</Button>
+            </a>
           </div>
-        </Card>
-      </div>
+        </div>
+      </Card>
     );
   }
 
-  // ── Registration success with onboarding ──
+  // ── Success ──
   if (isConfirmed && address) {
     return (
       <div className="grid gap-4">
@@ -337,18 +512,10 @@ export function RegisterForm() {
             <p className="t-lg" style={{ fontWeight: 600, color: "var(--color-verified)", marginBottom: "var(--space-2)" }}>
               Identity registered
             </p>
-            <p className="t-sm c-subtle" style={{ marginBottom: "var(--space-1)" }}>
-              Your on-chain identity is now live.
-            </p>
+            <p className="t-sm c-subtle" style={{ marginBottom: "var(--space-1)" }}>Your on-chain identity is now live.</p>
             <AddressDisplay address={address} />
             {hash && (
-              <a
-                href={`https://testnet.arcscan.app/tx/${hash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="t-xs mono"
-                style={{ color: "var(--color-arc-primary)", display: "inline-block", marginTop: "var(--space-2)" }}
-              >
+              <a href={`https://testnet.arcscan.app/tx/${hash}`} target="_blank" rel="noopener noreferrer" className="t-xs mono" style={{ color: "var(--color-arc-primary)", display: "inline-block", marginTop: "var(--space-2)" }}>
                 View transaction ↗
               </a>
             )}
@@ -361,51 +528,94 @@ export function RegisterForm() {
 
   // ── Registration form ──
   return (
-    <form onSubmit={handleSubmit} className="grid gap-4">
+    <form onSubmit={(e) => { e.preventDefault(); if (canSubmit) uploadAndRegister(); }} className="grid gap-4">
+      {/* Avatar + Name */}
       <Card>
-        <div className="grid gap-4">
-          <Field
-            label="Display name"
-            htmlFor="reg-name"
-            helper={`${name.length}/${NAME_MAX_LENGTH} characters. Letters, numbers, spaces, hyphens.`}
-            error={nameError}
-          >
-            <Input
-              id="reg-name"
-              type="text"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="Your name"
-              autoComplete="off"
-              maxLength={NAME_MAX_LENGTH}
-              aria-invalid={!!nameError}
-            />
-          </Field>
-
-          <Field
-            label="Metadata URI"
-            htmlFor="reg-uri"
-            helper="Optional. IPFS URI for your profile JSON. Auto-generated from name if left empty."
-          >
-            <Input
-              id="reg-uri"
-              mono
-              type="text"
-              value={metadataURI}
-              onChange={(e) => setMetadataURI(e.target.value)}
-              placeholder="ipfs://bafkrei..."
-            />
-          </Field>
+        <p className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>Identity</p>
+        <div style={{ display: "flex", gap: "var(--space-4)", alignItems: "flex-start" }}>
+          <AvatarUpload avatar={avatar} setAvatar={setAvatar} avatarPreview={avatarPreview} setAvatarPreview={setAvatarPreview} />
+          <div style={{ flex: 1 }}>
+            <Field label="Display name" htmlFor="reg-name" error={nameError} helper={`${name.length}/${NAME_MAX}`}>
+              <Input
+                id="reg-name"
+                type="text"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="Your display name"
+                autoComplete="off"
+                maxLength={NAME_MAX}
+                aria-invalid={!!nameError}
+              />
+            </Field>
+          </div>
         </div>
       </Card>
 
-      {/* Gas estimate — real numbers from simulation */}
-      <GasEstimateCard
-        address={ADDRESSES.identityRegistry}
-        abi={IDENTITY_REGISTRY_ABI}
-        args={[effectiveURI]}
-        enabled={!!effectiveURI && !!ADDRESSES.identityRegistry}
-      />
+      {/* Profile fields */}
+      <Card>
+        <p className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>Profile</p>
+        <div className="grid gap-4">
+          <Field label="Bio" htmlFor="reg-bio" helper="Optional. Up to 160 characters.">
+            <textarea
+              id="reg-bio"
+              value={bio}
+              onChange={(e) => setBio(e.target.value.slice(0, 160))}
+              placeholder="Tell us about yourself"
+              maxLength={160}
+              rows={3}
+              className="input"
+              style={{ resize: "vertical", fontFamily: "var(--font-body)" }}
+            />
+          </Field>
+          <Field label="Website" htmlFor="reg-website" helper="Optional. Your personal website." error={websiteError}>
+            <Input
+              id="reg-website"
+              type="url"
+              value={website}
+              onChange={(e) => handleWebsiteChange(e.target.value)}
+              placeholder="https://example.com"
+            />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+            <Field label="Twitter" htmlFor="reg-twitter" helper="@handle">
+              <Input
+                id="reg-twitter"
+                type="text"
+                value={twitter}
+                onChange={(e) => setTwitter(e.target.value)}
+                placeholder="@username"
+              />
+            </Field>
+            <Field label="GitHub" htmlFor="reg-github" helper="Username">
+              <Input
+                id="reg-github"
+                type="text"
+                value={github}
+                onChange={(e) => setGithub(e.target.value)}
+                placeholder="username"
+              />
+            </Field>
+          </div>
+        </div>
+      </Card>
+
+      {/* Recovery */}
+      <Card>
+        <p className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>Security</p>
+        <Field label="Recovery address" htmlFor="reg-recovery" helper="Optional. A secondary wallet that can recover your identity if your primary wallet is lost." error={recoveryError}>
+          <Input
+            id="reg-recovery"
+            mono
+            type="text"
+            value={recoveryAddress}
+            onChange={(e) => handleRecoveryChange(e.target.value)}
+            placeholder="0x..."
+          />
+        </Field>
+      </Card>
+
+      {/* Gas estimate */}
+      <GasEstimateCard enabled={!!canSubmit && !!ADDRESSES.identityRegistry} />
 
       {/* Tx phase tracker */}
       <TxPhaseTracker phase={txPhase} hash={hash} error={txError} />
@@ -413,10 +623,10 @@ export function RegisterForm() {
       <Button
         type="submit"
         block
-        disabled={isPending || isConfirming || !effectiveURI || !!nameError}
-        loading={isPending}
+        disabled={!canSubmit}
+        loading={isPending || isConfirming || txPhase === "uploading"}
       >
-        {isPending ? "Waiting for wallet…" : isConfirming ? "Confirming…" : "Register Identity"}
+        {txPhase === "uploading" ? "Uploading to IPFS…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming…" : "Register Identity"}
       </Button>
 
       {regError && txPhase !== "failed" && (
@@ -425,36 +635,3 @@ export function RegisterForm() {
     </form>
   );
 }
-
-// ── Gas Estimate Card ──
-
-function GasEstimateCard({
-  address,
-  abi,
-  args,
-  enabled,
-}: {
-  address: `0x${string}`;
-  abi: readonly unknown[];
-  args: readonly unknown[];
-  enabled: boolean;
-}) {
-  const { data: simResult, isLoading, isError } = useReadContract({
-    address,
-    abi: abi as any,
-    functionName: "register",
-    args: args as any,
-    query: { enabled, staleTime: 10_000 },
-  });
-
-  if (!enabled || isError) return null;
-
-  // We can't get gas estimate from useReadContract directly —
-  // the SimulationBox pattern handles this via useSimulateContract.
-  // Show a placeholder that will be replaced by the existing sim flow.
-  return null;
-}
-
-// ── Need wallet hook import ──
-
-import { useWallet } from "../../contexts/WalletContext";

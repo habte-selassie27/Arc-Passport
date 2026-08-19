@@ -26,6 +26,7 @@ import zkRoutes from "./routes/zk.js";
 import humanNodeRoutes from "./routes/human-node.js";
 import web2ProofRoutes from "./routes/web2-proof.js";
 import openid3Routes from "./routes/openid3.js";
+import uploadRoutes from "./routes/upload.js";
 import { startExpirySweep } from "./services/notificationService.js";
 import { startIndexer as startEASIndexer } from "./indexer/easIndexer.js";
 
@@ -76,6 +77,7 @@ app.use("/zk", zkRoutes);
 app.use("/human-node", humanNodeRoutes);
 app.use("/web2-proof", web2ProofRoutes);
 app.use("/openid3", openid3Routes);
+app.use("/upload", uploadRoutes);
 
 // Mount the specific /v1/* routers BEFORE serviceRoutesV1: it registers
 // catch-all patterns like GET /:service/schemas that would otherwise shadow

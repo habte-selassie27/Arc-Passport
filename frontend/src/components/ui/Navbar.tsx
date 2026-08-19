@@ -5,6 +5,7 @@ import { WalletChip } from "./WalletChip";
 
 const NAV_LINKS = [
   { to: "/", label: "Home", exact: true },
+  { to: "/register", label: "Register" },
   { to: "/passport", label: "Passport" },
   { to: "/score", label: "Score" },
   { to: "/zk", label: "ZK" },
