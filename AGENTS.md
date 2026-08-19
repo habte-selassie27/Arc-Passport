@@ -100,7 +100,7 @@ arcpass/
 │   │   ├── services/verifiers/   ← KycGate, DaoMembershipGate, ReputationGate
 │   │   └── mocks/
 │   ├── test/                     ← Foundry tests incl. integration + gas benchmarks
-│   └── script/                   ← Deploy.s.sol, seed scripts, Circle wallet setup
+│   └── script/                   ← Deploy.s.sol, DeployGates.s.sol, seed scripts, Circle wallet setup
 ├── backend/                      ← Node.js / Express API (TypeScript, ESM)
 │   └── src/
 │       ├── index.ts              ← bootstrap + route registration

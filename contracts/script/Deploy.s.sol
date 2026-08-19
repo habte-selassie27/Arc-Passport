@@ -66,17 +66,8 @@ contract Deploy is Script {
         ExpiringClaims expirations = new ExpiringClaims(address(attestationProxy));
         console2.log("ExpiringClaims:", address(expirations));
 
-        // ── Deployer renounces DEFAULT_ADMIN_ROLE ──
-        // After this point, only multisig holds DEFAULT_ADMIN_ROLE.
-        // The deployer EOA can no longer upgrade, grant roles, or pause.
-        // Only run if deployer != multisig (otherwise renounceRole requires self-call)
-        if (deployer != multisig) {
-            attestation.renounceRole(attestation.DEFAULT_ADMIN_ROLE(), deployer);
-            schema.renounceRole(schema.DEFAULT_ADMIN_ROLE(), deployer);
-            console2.log("Deployer renounced DEFAULT_ADMIN_ROLE on all proxied contracts");
-        } else {
-            console2.log("Skipped renounceRole: deployer == multisig");
-        }
+        // Admin roles held exclusively by multisig (granted in initialize).
+        // Deployer EOA has no roles on the proxies — nothing to renounce.
 
         vm.stopBroadcast();
 

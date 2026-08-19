@@ -12,6 +12,7 @@ export const ADDRESSES = {
   scorerRegistry:       env("VITE_SCORER_REGISTRY_ADDRESS") as `0x${string}` | undefined,
   humanityGate:         env("VITE_HUMANITY_GATE_ADDRESS") as `0x${string}` | undefined,
   web2DataGate:         env("VITE_WEB2_DATA_GATE_ADDRESS") as `0x${string}` | undefined,
+  identityGate:         env("VITE_IDENTITY_GATE_ADDRESS") as `0x${string}` | undefined,
   usdcErc20:           "0x3600000000000000000000000000000000000000" as `0x${string}`,
   tokenMessengerV2:    "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA" as `0x${string}`,
   msgTransmitterV2:    "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275" as `0x${string}`,
