@@ -7,6 +7,8 @@ import { CardSkeleton } from "../components/ui/Skeleton";
 import { PassportErrorBoundary } from "../components/shared/PassportErrorBoundary";
 import { NotificationsCard } from "../components/shared/NotificationsCard";
 import { RequestCredentialForm } from "../components/forms/RequestCredentialForm";
+import { PrivacySettings } from "../components/passport/PrivacySettings";
+import { DisclosureConfig } from "../components/passport/DisclosureConfig";
 import { useWallet } from "../contexts/WalletContext";
 import { API_BASE_URL } from "../config/api";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -113,16 +115,24 @@ export function PassportPage() {
           </Card>
         )}
 
-        {/* Own-passport extras: notifications + credential requests (wallet required). */}
-        {isOwner && (
+        {/* Own-passport extras: notifications, credential requests, privacy, disclosure (wallet required). */}
+        {isOwner && passport && (
           <div className="section" style={{ marginTop: "var(--space-12)" }}>
-            {/* Fetch field classifications for all claims owned by this address */}
-            {passport?.claims?.map((c) => (
-              <span key={c.claimId} className="sr-only" data-claim-id={c.claimId} />
-            ))}
             <NotificationsCard address={connectedAddress as `0x${string}`} />
             <div style={{ marginTop: "var(--space-6)" }}>
               <RequestCredentialForm address={connectedAddress as `0x${string}`} />
+            </div>
+            <div style={{ marginTop: "var(--space-6)" }}>
+              <DisclosureConfig
+                claims={passport.claims?.map((c) => ({
+                  claimId: c.claimId,
+                  schemaName: c.schemaId,
+                  issuer: c.issuer,
+                })) || []}
+              />
+            </div>
+            <div style={{ marginTop: "var(--space-6)" }}>
+              <PrivacySettings claimCount={passport.claims?.length || 0} />
             </div>
           </div>
         )}
