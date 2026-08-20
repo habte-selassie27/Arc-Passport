@@ -11,12 +11,11 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { useReadContract, useWaitForTransactionReceipt, useGasPrice, useSignMessage } from "wagmi";
+import { useReadContract, useWaitForTransactionReceipt, useGasPrice } from "wagmi";
 import { formatEther } from "viem";
 import { ADDRESSES } from "../../config/addresses";
 import { useIdentityRegister } from "../../hooks/useIdentity";
 import { apiUrl } from "../../config/api";
-import { signedFetch } from "../../utils/signedApi";
 import { Field } from "../ui/Field";
 import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
@@ -344,7 +343,6 @@ function OnboardingChecklist({ address }: { address: string }) {
 
 export function RegisterForm() {
   const { address } = useWallet();
-  const { signMessageAsync } = useSignMessage();
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [website, setWebsite] = useState("");
@@ -430,16 +428,14 @@ export function RegisterForm() {
           reader.readAsDataURL(avatar);
         });
 
-        const uploadRes = await signedFetch<{ ipfsUri: string }>({
-          path: "/upload",
-          address,
-          signMessage: signMessageAsync,
+        const uploadRes = await fetch(apiUrl("/upload/file"), {
           method: "POST",
-          body: { data: base64, mimeType: avatar.type, name: avatar.name },
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: base64, mimeType: avatar.type, name: avatar.name }),
         });
-
-        if (uploadRes?.ipfsUri) {
-          profile.avatarCid = uploadRes.ipfsUri;
+        const uploadJson = await uploadRes.json();
+        if (uploadJson?.data?.ipfsUri) {
+          profile.avatarCid = uploadJson.data.ipfsUri;
         }
       }
 

@@ -11,10 +11,10 @@ function getPinataCreds() {
 }
 
 /**
- * POST /upload — Pin a file (image) to IPFS via Pinata.
- * Requires signed auth. Accepts { data: string (base64), mimeType: string, name: string }.
+ * POST /upload/file — Pin a file to IPFS. No auth required (public data).
+ * Accepts { data: string (base64), mimeType: string, name: string }.
  */
-router.post("/", requireSignedNonce, async (req: Request, res: Response) => {
+router.post("/file", async (req: Request, res: Response) => {
   try {
     const { data, mimeType, name } = req.body as {
       data?: string;
