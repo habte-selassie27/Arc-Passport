@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useWriteContract, useWaitForTransactionReceipt, useSimulateContract } from "wagmi";
-import { ADDRESSES } from "../config/addresses";
+import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { apiUrl } from "../config/api";
-import { parseContractError } from "../utils/parseContractError";
+import { IDENTITY_REGISTRY_ABI } from "../abis/identityRegistry";
 
 export function useIdentity(address: `0x${string}` | undefined) {
   return useQuery({
@@ -18,41 +17,23 @@ export function useIdentity(address: `0x${string}` | undefined) {
   });
 }
 
-const IDENTITY_REGISTRY_ABI = [
-  {
-    type: "function",
-    name: "register",
-    inputs: [{ name: "metadataURI", type: "string" }],
-    outputs: [{ name: "tokenId", type: "uint256" }],
-    stateMutability: "nonpayable",
-  },
-] as const;
-
 export function useIdentityRegister() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract({
-    mutation: {
-      onError: (err) => {
-        // §5.2 / Pattern D: surface errors to the user via parseContractError,
-        // not raw console.error. The calling component can also check `error`
-        // from the hook return value.
-        console.error("[identity register error]", parseContractError(err));
-      },
-    },
-  });
+  const { writeContract, data: hash, isPending: isSigning, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   return {
-    writeContract: (args: { address: `0x${string}`; abi: readonly unknown[]; functionName: string; args: readonly unknown[] }) =>
+    writeContract: (args: { address: `0x${string}`; functionName: string; args: readonly unknown[] }) =>
       writeContract({
         address: args.address,
-        abi: args.abi as typeof IDENTITY_REGISTRY_ABI,
+        abi: IDENTITY_REGISTRY_ABI,
         functionName: args.functionName as "register",
         args: args.args as [string],
       }),
-    data: hash,
     hash,
-    isPending: isPending || isConfirming,
+    isSigning,
+    isConfirming,
     isSuccess,
+    isPending: isSigning || isConfirming,
     error,
   };
 }

@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { useReadContract, useWaitForTransactionReceipt, useGasPrice } from "wagmi";
 import { formatEther } from "viem";
 import { ADDRESSES } from "../../config/addresses";
+import { IDENTITY_REGISTRY_ABI } from "../../abis/identityRegistry";
 import { useIdentityRegister } from "../../hooks/useIdentity";
 import { apiUrl } from "../../config/api";
 import { Field } from "../ui/Field";
@@ -26,35 +27,6 @@ import { toast } from "../shared/Toast";
 import { parseContractError } from "../../utils/parseContractError";
 import { useWallet } from "../../contexts/WalletContext";
 import { QRCodeSVG } from "qrcode.react";
-
-// ── IdentityRegistry ABI ──
-
-const IDENTITY_REGISTRY_ABI = [
-  {
-    type: "function",
-    name: "register",
-    inputs: [{ name: "metadataURI", type: "string" }],
-    outputs: [{ name: "tokenId", type: "uint256" }],
-    stateMutability: "nonpayable",
-  },
-  {
-    type: "function",
-    name: "getIdentity",
-    inputs: [{ name: "owner", type: "address" }],
-    outputs: [
-      { name: "tokenId", type: "uint256" },
-      { name: "metadataURI", type: "string" },
-    ],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "balanceOf",
-    inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-  },
-] as const;
 
 // ── Validation ──
 
@@ -79,6 +51,38 @@ function validateAddress(v: string): string | null {
   if (!v) return null;
   if (!/^0x[0-9a-fA-F]{40}$/.test(v)) return "Invalid Ethereum address";
   return null;
+}
+
+// ── IPFS upload helpers (with proper error handling) ──
+
+async function uploadFileToIpfs(base64: string, mimeType: string, name: string): Promise<string | null> {
+  const res = await fetch(apiUrl("/upload/file"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: base64, mimeType, name }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("[upload/file]", res.status, text);
+    return null;
+  }
+  const json = await res.json().catch(() => null);
+  return json?.data?.ipfsUri ?? null;
+}
+
+async function uploadJsonToIpfs(data: Record<string, unknown>, name: string): Promise<string | null> {
+  const res = await fetch(apiUrl("/upload/json"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data, name }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("[upload/json]", res.status, text);
+    return null;
+  }
+  const json = await res.json().catch(() => null);
+  return json?.data?.ipfsUri ?? null;
 }
 
 // ── Avatar Upload ──
@@ -166,21 +170,19 @@ function AvatarUpload({
 
 // ── Tx Phase Tracker ──
 
-type TxPhase = "idle" | "uploading" | "simulating" | "signing" | "submitted" | "confirming" | "confirmed" | "failed";
+type TxPhase = "idle" | "uploading" | "signing" | "submitted" | "confirming" | "confirmed" | "failed";
 
-function TxPhaseTracker({ phase, hash, error, explorerUrl }: { phase: TxPhase; hash?: `0x${string}`; error?: string | null; explorerUrl?: string }) {
+function TxPhaseTracker({ phase, hash, error }: { phase: TxPhase; hash?: `0x${string}`; error?: string | null }) {
   if (phase === "idle") return null;
 
   const steps = [
     { key: "uploading", label: "Uploading" },
-    { key: "simulating", label: "Simulating" },
     { key: "signing", label: "Signing" },
-    { key: "submitted", label: "Submitted" },
     { key: "confirming", label: "Confirming" },
     { key: "confirmed", label: "Confirmed" },
   ];
 
-  const phaseOrder = ["idle", "uploading", "simulating", "signing", "submitted", "confirming", "confirmed", "failed"];
+  const phaseOrder = ["idle", "uploading", "signing", "confirming", "confirmed", "failed"];
   const currentIdx = phaseOrder.indexOf(phase);
 
   return (
@@ -222,7 +224,7 @@ function TxPhaseTracker({ phase, hash, error, explorerUrl }: { phase: TxPhase; h
       </div>
       {hash && (
         <a
-          href={explorerUrl || `https://testnet.arcscan.app/tx/${hash}`}
+          href={`https://testnet.arcscan.app/tx/${hash}`}
           target="_blank"
           rel="noopener noreferrer"
           className="t-xs mono"
@@ -245,8 +247,6 @@ function GasEstimateCard({ enabled }: { enabled: boolean }) {
 
   if (!enabled || !gasPrice) return null;
 
-  // Arc uses USDC as gas token. Show a rough estimate.
-  // Real gas: ~100k gas for register * gasPrice
   const estimatedGas = 100000n;
   const costWei = estimatedGas * gasPrice;
   const costEth = formatEther(costWei);
@@ -310,7 +310,6 @@ function OnboardingChecklist({ address }: { address: string }) {
         ))}
       </div>
 
-      {/* Shareable passport link */}
       <div style={{ marginTop: "var(--space-4)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "var(--color-surface-0)" }}>
         <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-2)" }}>Share your passport</p>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
@@ -357,7 +356,7 @@ export function RegisterForm() {
   const [txPhase, setTxPhase] = useState<TxPhase>("idle");
   const [txError, setTxError] = useState<string | null>(null);
 
-  // Re-registration guard
+  // Single identity check — no duplicate, no competing timeout
   const everTimedOut = useRef(false);
   const { data: existingIdentity, isLoading: checkingIdentity } = useReadContract({
     address: ADDRESSES.identityRegistry,
@@ -382,25 +381,22 @@ export function RegisterForm() {
   const checkDone = everTimedOut.current || !checkingIdentity;
   const alreadyRegistered = checkDone && existingIdentity && Number(existingIdentity[0]) > 0;
 
-  // Registration hook
-  const { writeContract, hash, isPending, isSuccess, error: regError } = useIdentityRegister();
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
+  // Registration hook — exposed states are now accurate
+  const { writeContract, hash, isSigning, isConfirming, isSuccess, error: regError } = useIdentityRegister();
 
-  // Track tx phase
+  // Track tx phase — single source of truth
   useEffect(() => {
-    if (isPending && !hash) setTxPhase("signing");
+    if (isSigning && !hash) setTxPhase("signing");
     else if (hash && isConfirming) setTxPhase("confirming");
-    else if (isConfirmed) {
+    else if (isSuccess) {
       setTxPhase("confirmed");
       sessionStorage.removeItem("arcpass_register_check_done");
-    }
-    else if (regError) {
+    } else if (regError) {
       setTxPhase("failed");
       setTxError(parseContractError(regError));
     }
-  }, [isPending, hash, isConfirming, isConfirmed, regError]);
+  }, [isSigning, hash, isConfirming, isSuccess, regError]);
 
-  // Upload avatar to IPFS and build metadata
   const uploadAndRegister = useCallback(async () => {
     if (!address) return;
 
@@ -408,7 +404,6 @@ export function RegisterForm() {
     setTxError(null);
 
     try {
-      // Build profile JSON
       const profile: Record<string, unknown> = { displayName: name || "Anonymous" };
       if (bio) profile.bio = bio;
       if (website) profile.website = website;
@@ -416,46 +411,32 @@ export function RegisterForm() {
       if (github) profile.github = github;
       if (recoveryAddress) profile.recoveryAddress = recoveryAddress;
 
-      // Upload avatar if present
+      // Upload avatar — skip if upload fails, continue without it
       if (avatar) {
         const reader = new FileReader();
         const base64 = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => {
-            const result = reader.result as string;
-            resolve(result.split(",")[1]); // strip data:image/...;base64, prefix
-          };
+          reader.onload = () => resolve((reader.result as string).split(",")[1]);
           reader.onerror = reject;
           reader.readAsDataURL(avatar);
         });
 
-        const uploadRes = await fetch(apiUrl("/upload/file"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: base64, mimeType: avatar.type, name: avatar.name }),
-        });
-        const uploadJson = await uploadRes.json();
-        if (uploadJson?.data?.ipfsUri) {
-          profile.avatarCid = uploadJson.data.ipfsUri;
+        const avatarUri = await uploadFileToIpfs(base64, avatar.type, avatar.name);
+        if (avatarUri) {
+          profile.avatarCid = avatarUri;
+        } else {
+          toast("error", "Avatar upload failed — continuing without avatar");
         }
       }
 
-      // Pin the metadata JSON to IPFS (public endpoint — no auth needed)
-      const metadataRes = await fetch(apiUrl("/upload/json"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: profile,
-          name: `passport-${address}.json`,
-        }),
-      });
-      const metadataJson = await metadataRes.json();
-      const metadataUri = metadataJson?.data?.ipfsUri || `ipfs://bafkreibasic_${name.toLowerCase().replace(/\s+/g, "_")}`;
+      // Pin metadata JSON — this MUST succeed
+      const metadataUri = await uploadJsonToIpfs(profile, `passport-${address}.json`);
+      if (!metadataUri) {
+        throw new Error("Failed to upload profile to IPFS. Please try again.");
+      }
 
-      // Register on-chain
       setTxPhase("signing");
       writeContract({
         address: ADDRESSES.identityRegistry,
-        abi: IDENTITY_REGISTRY_ABI,
         functionName: "register",
         args: [metadataUri],
       });
@@ -466,7 +447,6 @@ export function RegisterForm() {
     }
   }, [address, name, bio, website, twitter, github, recoveryAddress, avatar, writeContract]);
 
-  // Name validation
   const handleNameChange = useCallback((v: string) => {
     setName(v);
     setNameError(validateName(v));
@@ -482,7 +462,8 @@ export function RegisterForm() {
     setRecoveryError(validateAddress(v));
   }, []);
 
-  const canSubmit = name && !nameError && !websiteError && !recoveryError && !isPending && !isConfirming && !isSuccess;
+  const isUploading = txPhase === "uploading";
+  const canSubmit = name && !nameError && !websiteError && !recoveryError && !isSigning && !isConfirming && !isSuccess && !isUploading;
 
   // ── Already registered ──
   if (alreadyRegistered) {
@@ -507,7 +488,7 @@ export function RegisterForm() {
   }
 
   // ── Success ──
-  if (isConfirmed && address) {
+  if (isSuccess && address) {
     return (
       <div className="grid gap-4">
         <Card verified>
@@ -628,9 +609,9 @@ export function RegisterForm() {
         type="submit"
         block
         disabled={!canSubmit}
-        loading={isPending || isConfirming || txPhase === "uploading"}
+        loading={isSigning || isConfirming || isUploading}
       >
-        {txPhase === "uploading" ? "Uploading to IPFS…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming…" : "Register Identity"}
+        {isUploading ? "Uploading to IPFS…" : isSigning ? "Waiting for wallet…" : isConfirming ? "Confirming…" : "Register Identity"}
       </Button>
 
       {regError && txPhase !== "failed" && (
