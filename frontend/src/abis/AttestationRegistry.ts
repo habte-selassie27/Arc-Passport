@@ -44,6 +44,13 @@ export const ATTESTATION_REGISTRY_ABI = [
   },
   {
     type: "function",
+    name: "adminRevoke",
+    inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "getClaim",
     inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
     outputs: [
@@ -63,6 +70,13 @@ export const ATTESTATION_REGISTRY_ABI = [
     name: "isValid",
     inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
     outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getIssuers",
+    inputs: [],
+    outputs: [{ name: "", type: "address[]", internalType: "address[]" }],
     stateMutability: "view",
   },
   {
