@@ -91,7 +91,7 @@ contract PassportVerifierTest is Test {
     function test_verify_revokedClaim() public {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         VerificationResult memory r = verifier.verify(subject, schemaId);
@@ -199,7 +199,7 @@ contract PassportVerifierTest is Test {
     function test_verifyField_revertsIfRevoked() public {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, keccak256("root"), 0);
-        vm.startPrank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         bytes32[] memory proof = new bytes32[](0);
