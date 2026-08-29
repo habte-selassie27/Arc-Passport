@@ -71,20 +71,28 @@ export const Errors = {
     new ArcPassError("OPENID3_ALREADY_LINKED", "This Web2 account is already linked to a different wallet", 409),
   VerificationExpired: () =>
     new ArcPassError("VERIFICATION_EXPIRED", "Verification session expired", 410),
-  HumanodeVerifyFailed: (reason: string) =>
-    new ArcPassError("HUMANODE_VERIFY_FAILED", `Provider verification failed: ${reason}`, 502),
-  HumanodeNotUnique: () =>
-    new ArcPassError("HUMANODE_NOT_UNIQUE", "Humanode did not confirm a unique living human", 422),
-  HumanodeAlreadyBound: () =>
-    new ArcPassError(
-      "HUMANODE_ALREADY_BOUND",
-      "This human identity is already linked to a different wallet",
-      409
-    ),
   AttestationFailed: (reason: string) =>
     new ArcPassError("ATTESTATION_FAILED", `On-chain attestation failed: ${reason}`, 502),
   ProviderVerifyFailed: (reason: string) =>
     new ArcPassError("PROVIDER_VERIFY_FAILED", `Provider verification failed: ${reason}`, 502),
   ProviderAlreadyBound: () =>
     new ArcPassError("PROVIDER_ALREADY_BOUND", "This proof is already linked to a different wallet", 409),
+  NotConfigured: (envVar: string) =>
+    new ArcPassError("NOT_CONFIGURED", `Required env var not configured: ${envVar}`, 503),
+  BiometricHashFailed: (reason: string) =>
+    new ArcPassError("BIOMETRIC_HASH_FAILED", `Biometric hash computation failed: ${reason}`, 400),
+  OracleSubmissionFailed: (reason: string) =>
+    new ArcPassError("ORACLE_SUBMISSION_FAILED", `Oracle submission failed: ${reason}`, 502),
+  NullifierAlreadyBound: (nullifier: string, wallet: string) =>
+    new ArcPassError("NULLIFIER_ALREADY_BOUND", `Nullifier ${nullifier.slice(0, 10)}... already bound to ${wallet}`, 409),
+  ActivationFailed: (reason: string) =>
+    new ArcPassError("ACTIVATION_FAILED", `Passport activation failed: ${reason}`, 500),
+  CallerMismatch: () =>
+    new ArcPassError("CALLER_MISMATCH", "You can only activate your own passport", 403),
+  ConcurrentActivation: () =>
+    new ArcPassError("CONCURRENT_ACTIVATION", "Another activation is in progress", 409),
+  ScoreWriterRoleMissing: () =>
+    new ArcPassError("SCORE_WRITER_ROLE_MISSING", "SCORE_WRITER_ROLE not available. Run GrantScoreRole.s.sol.", 503),
+  AttestationOwnershipFailed: (claimId: string, reason: string) =>
+    new ArcPassError("ATTESTATION_OWNERSHIP_FAILED", `Attestation ${claimId.slice(0, 10)}... ownership check failed: ${reason}`, 422),
 } as const;
