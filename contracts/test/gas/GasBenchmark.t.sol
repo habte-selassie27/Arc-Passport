@@ -56,7 +56,7 @@ contract GasBenchmark is Test {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
 
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
     }
 
