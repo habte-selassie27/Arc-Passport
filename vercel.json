@@ -16,7 +16,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://gateway.pinata.cloud https://cloudflare-ipfs.com https://ipfs.io; font-src 'self' data:; connect-src 'self' https://rpc.testnet.arc.network https://api.pinata.cloud https://gateway.pinata.cloud wss://rpc.testnet.arc.network; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://gateway.pinata.cloud https://cloudflare-ipfs.com https://ipfs.io; connect-src 'self' https://rpc.testnet.arc.network https://api.pinata.cloud https://gateway.pinata.cloud wss://rpc.testnet.arc.network https://arc-passport.onrender.com https://demo-api.dauth.network https://*.dauth.network https://mm-sdk-analytics.api.cx.metamask.io; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
         },
         {
           "key": "X-Content-Type-Options",
