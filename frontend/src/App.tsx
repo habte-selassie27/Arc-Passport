@@ -1,13 +1,13 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { GuidePage } from "./pages/Guide";
 import { HomePage } from "./pages/Home";
 import { RegisterPage } from "./pages/Register";
 import { PassportPage } from "./pages/Passport";
+import { CredentialsPage } from "./pages/Credentials";
 import { VerifyPage } from "./pages/Verify";
 import { DeveloperVerifyPage } from "./pages/DeveloperVerify";
-import { ScorePage } from "./pages/Score";
 import { EASPage } from "./pages/EAS";
-import { HumanNodePage } from "./pages/HumanNode";
+import { WorldIdPage } from "./pages/WorldId";
 import { Web2ProofPage } from "./pages/Web2Proof";
 import { OpenID3IdentityPage } from "./pages/OpenID3Identity";
 import { ZKPassportPage } from "./pages/ZKPassport";
@@ -17,6 +17,8 @@ import { Navbar } from "./components/ui/Navbar";
 import { ToastContainer } from "./components/shared/Toast";
 import { PassportProvider as ArcPassportProvider } from "./contexts/PassportContext";
 import { PassportErrorBoundary } from "./components/shared/PassportErrorBoundary";
+import { ChainStatusBar } from "./components/landing/ChainStatusBar";
+import "./styles/landing.css";
 
 function Footer() {
   return (
@@ -47,41 +49,69 @@ export default function App() {
   return (
     <BrowserRouter>
       <PassportProvider>
-        <div className="min-h-screen flex flex-col">
-          <Navbar />
-          <main className="page flex-1 animate-page" style={{ paddingTop: "var(--space-8)", paddingBottom: "var(--space-16)" }}>
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/guide" element={<GuidePage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/passport" element={<PassportPage />} />
-              <Route path="/passport/:address" element={<PassportPage />} />
-              <Route path="/verify" element={<VerifyPage />} />
-              <Route path="/score" element={<ScorePage />} />
-              <Route path="/score/:address" element={<ScorePage />} />
-              <Route path="/zk" element={<ZKPassportPage />} />
-              <Route path="/eas" element={<EASPage />} />
-              <Route path="/eas/schemas/:uid" element={<EASPage />} />
-              <Route path="/eas/attestations/:uid" element={<EASPage />} />
-              <Route path="/eas/verify/:address" element={<EASPage />} />
-              <Route path="/human-node" element={<HumanNodePage />} />
-          <Route path="/web2-proof" element={<Web2ProofPage />} />
-          <Route path="/openid3" element={<OpenID3IdentityPage />} />
-              <Route path="/developer/verify" element={<DeveloperVerifyPage />} />
-              <Route path="/services/:service" element={<ServiceVerifyPage />} />
-              <Route path="/services/:service/:address" element={<ServiceVerifyPage />} />
-              {/* Legacy redirects */}
-              <Route path="/issue" element={<Navigate to="/studio/credentials/issue" replace />} />
-              <Route path="/schema" element={<Navigate to="/studio/schemas" replace />} />
-              <Route path="/studio/*" element={<StudioLayout />} />
-            </Routes>
-          </main>
-          <Footer />
-        </div>
+        <AppInner />
         <ToastContainer />
       </PassportProvider>
     </BrowserRouter>
   );
+}
+
+function AppInner() {
+  const { pathname } = useLocation();
+  const isHome = pathname === "/";
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      {isHome && <ChainStatusBar />}
+      <Navbar className={isHome ? "nav--landing" : undefined} />
+      <main
+        className={`flex-1 animate-page ${isHome ? "" : "page"}`}
+        style={isHome ? undefined : { paddingTop: "var(--space-8)", paddingBottom: "var(--space-16)" }}
+      >
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/guide" element={<GuidePage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/passport" element={<PassportPage />} />
+          <Route path="/passport/:address" element={<PassportPage />} />
+          <Route path="/credentials" element={<CredentialsPage />} />
+          <Route path="/verify" element={<VerifyPage />} />
+          {/* Score collapsed into Passport Overview — ScoreDisplay lives inside PassportCard */}
+          <Route path="/score" element={<Navigate to="/passport" replace />} />
+          <Route path="/score/:address" element={<ScoreRedirect />} />
+          {/* History collapsed into Passport Activity — RegisterHistory lives as a tab */}
+          <Route path="/register-history" element={<Navigate to="/passport" replace />} />
+          <Route path="/register-history/:address" element={<RegisterHistoryRedirect />} />
+          <Route path="/zk" element={<ZKPassportPage />} />
+          <Route path="/eas" element={<EASPage />} />
+          <Route path="/eas/schemas/:uid" element={<EASPage />} />
+          <Route path="/eas/attestations/:uid" element={<EASPage />} />
+          <Route path="/eas/verify/:address" element={<EASPage />} />
+          <Route path="/world-id" element={<WorldIdPage />} />
+          <Route path="/web2-proof" element={<Web2ProofPage />} />
+          <Route path="/openid3" element={<OpenID3IdentityPage />} />
+          <Route path="/developer/verify" element={<DeveloperVerifyPage />} />
+          <Route path="/services/:service" element={<ServiceVerifyPage />} />
+          <Route path="/services/:service/:address" element={<ServiceVerifyPage />} />
+          {/* Legacy redirects */}
+          <Route path="/issue" element={<Navigate to="/studio/issue" replace />} />
+          <Route path="/schema" element={<Navigate to="/studio/schemas" replace />} />
+          <Route path="/studio/*" element={<StudioLayout />} />
+        </Routes>
+      </main>
+      {!isHome && <Footer />}
+    </div>
+  );
+}
+
+function ScoreRedirect() {
+  const { address } = useParams<{ address: string }>();
+  return <Navigate to={address ? `/passport/${address}` : "/passport"} replace />;
+}
+
+function RegisterHistoryRedirect() {
+  const { address } = useParams<{ address: string }>();
+  return <Navigate to={address ? `/passport/${address}` : "/passport"} replace />;
 }
 
 function PassportProvider({ children }: { children: React.ReactNode }) {
