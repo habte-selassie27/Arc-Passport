@@ -43,7 +43,7 @@ export function RevokeForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <Field label="Claim ID" htmlFor="revoke-claim" helper="The on-chain claim ID (0x…). Requires REVOKER_ROLE.">
+      <Field label="Claim ID" htmlFor="revoke-claim" helper="The on-chain claim ID (0x…). Only the issuer who created this claim can revoke it.">
         <Input
           id="revoke-claim"
           mono
