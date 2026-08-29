@@ -117,8 +117,8 @@ contract ArcNativeIntegration is Test {
         kycResult = verifier.verify(userAlice, kycSchema);
         assertTrue(kycResult.valid);
 
-        // Revoke KYC
-        vm.prank(multisig);
+        // Revoke KYC — only the original issuer can revoke
+        vm.prank(issuerKYC);
         registry.revoke(kycClaim);
 
         // Both now invalid
