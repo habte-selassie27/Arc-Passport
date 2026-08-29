@@ -69,7 +69,7 @@ describe("primusService", () => {
     const provider = new MockPrimusProvider();
     const start = await startVerification(SUBJECT_A, "github-account", provider);
     expect(start.verificationId).toBeTruthy();
-    expect(start.authUrl).toContain("mock-primus");
+    expect(start.authUrl).toContain("taskId=");
 
     const rec = await handleCallback(start.verificationId, SUBJECT_A, "task-mock-1", provider);
     expect(rec.state).toBe("complete");
