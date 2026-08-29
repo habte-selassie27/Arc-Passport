@@ -24,7 +24,7 @@ export function buildClaimTree(fields: ClaimField[]): {
 
   const tree = new MerkleTree(leaves, keccak256, { sortPairs: true });
   return {
-    root: `0x${tree.getHexRoot()}` as `0x${string}`,
+    root: tree.getHexRoot() as `0x${string}`,
     leaves: leaves as `0x${string}`[],
     tree,
   };
