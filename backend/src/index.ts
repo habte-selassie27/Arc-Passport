@@ -22,19 +22,21 @@ import notificationsRoutesV1 from "./routes/v1/notifications.js";
 import requestsRoutesV1 from "./routes/v1/requests.js";
 import openapiRoutesV1 from "./routes/v1/openapi.js";
 import verifyRoutesV1 from "./routes/v1/verify.js";
+import attestWeb2Routes from "./routes/v1/attestWeb2.js";
 import zkRoutes from "./routes/zk.js";
-import humanNodeRoutes from "./routes/human-node.js";
+import worldIdRoutes from "./routes/world-id.js";
+import livenessRoutes from "./routes/liveness.js";
 import web2ProofRoutes from "./routes/web2-proof.js";
 import openid3Routes from "./routes/openid3.js";
 import uploadRoutes from "./routes/upload.js";
+import passportActivateRoutes from "./routes/passportActivate.js";
 import { startExpirySweep } from "./services/notificationService.js";
-import { startIndexer as startEASIndexer } from "./indexer/easIndexer.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3001", 10);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 
 // Global rate limit — all routes
 app.use(
@@ -69,12 +71,14 @@ app.use("/identity", identityRoutes);
 app.use("/attestation", attestationRoutes);
 app.use("/reputation", reputationRoutes);
 app.use("/passport", passportRoutes);
+app.use("/passport", passportActivateRoutes);
 app.use("/schema", schemaRoutes);
 app.use("/issuer", issuerRoutes);
 app.use("/score", scoreRoutes);
 app.use("/eas", easRoutes);
 app.use("/zk", zkRoutes);
-app.use("/human-node", humanNodeRoutes);
+app.use("/world-id", worldIdRoutes);
+app.use("/liveness", livenessRoutes);
 app.use("/web2-proof", web2ProofRoutes);
 app.use("/openid3", openid3Routes);
 app.use("/upload", uploadRoutes);
@@ -88,6 +92,7 @@ app.use("/v1/settings", settingsRoutesV1);
 app.use("/v1/notifications", notificationsRoutesV1);
 app.use("/v1/requests", requestsRoutesV1);
 app.use("/v1/verify", verifyRoutesV1);
+app.use("/v1/attest", attestWeb2Routes);
 app.use("/v1", v1WriteLimiter, serviceRoutesV1);
 app.use("/v1", openapiRoutesV1);
 
@@ -106,12 +111,13 @@ app.use(errorHandler);
 if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {
     console.log(`ArcPass backend listening on port ${PORT}`);
-    startClaimIndexer();
-    startEASIndexer();
+    // One indexer (claim indexer) handles both catch-up and live events.
+    // Small delay so the first HTTP response isn't blocked by catch-up I/O.
+    setTimeout(() => startClaimIndexer(), 3_000);
     startExpirySweep();
-    startGasPricePolling(30_000);
+    startGasPricePolling(60_000);
     startBalancePolling(300_000);
-    startEventWatchers();
+    setTimeout(() => startEventWatchers(), 5_000);
   });
 }
 
