@@ -4,17 +4,18 @@ import { requireSignedNonce } from "../middleware/auth.js";
 import { ArcPassError, Errors } from "../utils/errors.js";
 import {
   startLinking,
-  handleOAuthCallback,
+  handleDAuthCallback,
   getLink,
   getOpenID3Status,
 } from "../services/openid3Service.js";
 import { getOpenID3Provider, type OpenID3ProviderId } from "../services/openid3Provider.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
+import { type DAuthResult } from "../utils/dauthVerifier.js";
 
 const router = Router();
 export default router;
 
-const PROVIDER_IDS: OpenID3ProviderId[] = ["github", "twitter", "discord", "email"];
+const PROVIDER_IDS: OpenID3ProviderId[] = ["github", "twitter", "discord"];
 
 const writeLimiter = rateLimit({
   windowMs: 60_000,
@@ -38,18 +39,22 @@ function handleError(res: any, err: unknown) {
 // ── Public endpoints ──
 
 router.get("/config", (_req, res) => {
+  const allProviders = [
+    { id: "github", name: "GitHub", description: "Link your GitHub account", icon: "github", envKey: "OPENID3_GITHUB_CLIENT_ID" },
+    { id: "twitter", name: "X / Twitter", description: "Link your X account", icon: "twitter", envKey: "OPENID3_TWITTER_CLIENT_ID" },
+    { id: "discord", name: "Discord", description: "Link your Discord account", icon: "discord", envKey: "OPENID3_DISCORD_CLIENT_ID" },
+  ];
+  const providers = allProviders.map(({ envKey, ...p }) => ({
+    ...p,
+    configured: !!process.env[envKey],
+  }));
   res.json({
     success: true,
     data: {
       provider: "openid3",
-      mechanism: "oauth",
+      mechanism: "dauth",
       schemaId: SOCIAL_SCHEMAS.OPENID3_IDENTITY.id,
-      providers: [
-        { id: "github", name: "GitHub", description: "Link your GitHub account", icon: "github" },
-        { id: "twitter", name: "X / Twitter", description: "Link your X account", icon: "twitter" },
-        { id: "discord", name: "Discord", description: "Link your Discord account", icon: "discord" },
-        { id: "email", name: "Email", description: "Verify your email address", icon: "email" },
-      ],
+      providers,
     },
   });
 });
@@ -74,7 +79,7 @@ router.post("/start", writeLimiter, requireSignedNonce, async (req, res) => {
     const subject = req.verifiedAddress!;
     const { providerId } = req.body;
     if (!providerId || !PROVIDER_IDS.includes(providerId)) {
-      throw Errors.MissingFields(["providerId (github|twitter|discord|email)"]);
+      throw Errors.MissingFields(["providerId (github|twitter|discord)"]);
     }
 
     const provider = getOpenID3Provider();
@@ -85,16 +90,12 @@ router.post("/start", writeLimiter, requireSignedNonce, async (req, res) => {
   }
 });
 
-router.get("/status/:linkId", writeLimiter, requireSignedNonce, async (req, res) => {
+router.get("/status/:linkId", async (req, res) => {
   try {
     const { linkId } = req.params;
-    const subject = req.verifiedAddress!;
     const record = getLink(linkId);
     if (!record) {
       throw Errors.VerificationNotFound(linkId);
-    }
-    if (record.subject.toLowerCase() !== subject.toLowerCase()) {
-      throw Errors.VerificationMismatch();
     }
     res.json({ success: true, data: record });
   } catch (err) {
@@ -105,13 +106,13 @@ router.get("/status/:linkId", writeLimiter, requireSignedNonce, async (req, res)
 router.post("/callback", writeLimiter, requireSignedNonce, async (req, res) => {
   try {
     const subject = req.verifiedAddress!;
-    const { code, linkId } = req.body;
-    if (!code || !linkId) {
-      throw Errors.MissingFields(["code", "linkId"]);
+    const { dauthResult, linkId } = req.body as { dauthResult: DAuthResult; linkId: string };
+    if (!dauthResult || !linkId) {
+      throw Errors.MissingFields(["dauthResult (DAuth proof/JWT)", "linkId"]);
     }
 
     const provider = getOpenID3Provider();
-    const record = await handleOAuthCallback(linkId, subject, code, provider);
+    const record = await handleDAuthCallback(linkId, subject, dauthResult, provider);
     res.json({ success: true, data: record });
   } catch (err) {
     handleError(res, err);
