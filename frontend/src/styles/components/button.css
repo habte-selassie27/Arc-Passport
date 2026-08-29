@@ -88,6 +88,13 @@
   font-size: var(--text-xs);
 }
 
+/* Medium size — landing page CTAs */
+.btn--md {
+  padding: 12px 24px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
 /* Full width — single-column mobile forms only */
 .btn--block {
   width: 100%;
