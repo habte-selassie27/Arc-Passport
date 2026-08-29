@@ -1,14 +1,9 @@
 import { useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useSignMessage } from "wagmi";
 import { usePassport } from "../hooks/usePassport";
-import { PassportCard } from "../components/passport/PassportCard";
 import { CardSkeleton } from "../components/ui/Skeleton";
 import { PassportErrorBoundary } from "../components/shared/PassportErrorBoundary";
-import { NotificationsCard } from "../components/shared/NotificationsCard";
-import { RequestCredentialForm } from "../components/forms/RequestCredentialForm";
-import { PrivacySettings } from "../components/passport/PrivacySettings";
-import { DisclosureConfig } from "../components/passport/DisclosureConfig";
 import { useWallet } from "../contexts/WalletContext";
 import { API_BASE_URL } from "../config/api";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -18,21 +13,39 @@ import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { useFieldProof, type ClaimFieldClassification } from "../hooks/useFieldProof";
+import { PassportTabNav, OverviewPanel, CredentialsPanel, ActivityPanel, SharePanel } from "../components/passport/PassportTabs";
+
+type TabKey = "overview" | "credentials" | "activity" | "share";
 
 export function PassportPage() {
   const { address: paramAddress } = useParams<{ address: string }>();
   const { address: connectedAddress } = useWallet();
   const { signMessageAsync } = useSignMessage();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const targetAddress = (paramAddress || connectedAddress) as `0x${string}` | undefined;
   const { data: passport, isLoading, error, refetch } = usePassport(targetAddress);
 
-  // Selective disclosure state
+  const initialTab = (searchParams.get("tab") as TabKey) || "overview";
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    ["overview", "credentials", "activity", "share"].includes(initialTab) ? initialTab : "overview"
+  );
+
+  const handleTabChange = (tab: TabKey) => {
+    setActiveTab(tab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tab === "overview") next.delete("tab");
+      else next.set("tab", tab);
+      return next;
+    }, { replace: true });
+  };
+
+  // Selective disclosure state (used in Credentials tab for owner)
   const [claimFields, setClaimFields] = useState<Record<string, ClaimFieldClassification[]>>({});
-  const { fetchFields, fetchProof, loading: proofLoading, error: _proofError } = useFieldProof();
+  const { fetchFields, fetchProof, loading: proofLoading } = useFieldProof();
   const [proofResult, setProofResult] = useState<import("../hooks/useFieldProof").FieldProof | null>(null);
 
-  /** Fetch field classifications for a claim (requires wallet signing). */
   const handleRequestFields = useCallback(
     async (claimId: string) => {
       if (!connectedAddress) return;
@@ -44,11 +57,9 @@ export function PassportPage() {
     [connectedAddress, signMessageAsync, fetchFields]
   );
 
-  /** Generate a Merkle proof for a specific field (requires wallet signing). */
   const handleRequestProof = useCallback(
     async (claimId: string, fieldName: string) => {
       if (!connectedAddress) return;
-      // Ensure field classifications are loaded first
       if (!claimFields[claimId]) {
         await handleRequestFields(claimId);
       }
@@ -86,7 +97,6 @@ export function PassportPage() {
       />
 
       <PassportErrorBoundary>
-        {/* Slim, non-blocking backend-offline banner — never dominates the page */}
         {error && (
           <ErrorBanner onRetry={() => void refetch()}>
             Passport data unavailable — backend offline.{" "}
@@ -96,45 +106,32 @@ export function PassportPage() {
 
         {isLoading && <CardSkeleton />}
 
-        {!isLoading && !error && passport && (
-          <PassportCard
-            passport={passport}
-            claimFields={isOwner ? claimFields : undefined}
-            onRequestProof={isOwner ? handleRequestProof : undefined}
-            proofResult={isOwner ? proofResult : undefined}
-            proofLoading={isOwner ? proofLoading : undefined}
-          />
-        )}
-
         {!isLoading && !error && !passport && (
           <Card>
             <EmptyState
               title="No passport data"
-              body={`No indexed passport found for this address yet. Try again shortly, or verify credentials directly on-chain.`}
+              body="No indexed passport found for this address yet. Try again shortly, or verify credentials directly on-chain."
             />
           </Card>
         )}
 
-        {/* Own-passport extras: notifications, credential requests, privacy, disclosure (wallet required). */}
-        {isOwner && passport && (
-          <div className="section" style={{ marginTop: "var(--space-12)" }}>
-            <NotificationsCard address={connectedAddress as `0x${string}`} />
-            <div style={{ marginTop: "var(--space-6)" }}>
-              <RequestCredentialForm address={connectedAddress as `0x${string}`} />
-            </div>
-            <div style={{ marginTop: "var(--space-6)" }}>
-              <DisclosureConfig
-                claims={passport.claims?.map((c) => ({
-                  claimId: c.claimId,
-                  schemaName: c.schemaId,
-                  issuer: c.issuer,
-                })) || []}
+        {!isLoading && passport && (
+          <>
+            <PassportTabNav active={activeTab} onChange={handleTabChange} />
+            {activeTab === "overview" && <OverviewPanel passport={passport} />}
+            {activeTab === "credentials" && (
+              <CredentialsPanel
+                passport={passport}
+                claimFields={isOwner ? claimFields : undefined}
+                onRequestProof={isOwner ? handleRequestProof : undefined}
+                proofResult={isOwner ? proofResult : undefined}
+                proofLoading={isOwner ? proofLoading : undefined}
+                isOwner={!!isOwner}
               />
-            </div>
-            <div style={{ marginTop: "var(--space-6)" }}>
-              <PrivacySettings claimCount={passport.claims?.length || 0} />
-            </div>
-          </div>
+            )}
+            {activeTab === "activity" && <ActivityPanel address={targetAddress} passport={passport} />}
+            {activeTab === "share" && <SharePanel passport={passport} />}
+          </>
         )}
       </PassportErrorBoundary>
     </div>
