@@ -8,6 +8,7 @@ import { executeContractCall } from "./circleService.js";
 import { Errors } from "../utils/errors.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
 import { type OpenID3Provider, type OpenID3ProviderId } from "./openid3Provider.js";
+import { type DAuthResult, type VerifiedIdentity } from "../utils/dauthVerifier.js";
 
 // ── Schema ──
 
@@ -161,10 +162,10 @@ export async function startLinking(
   return { linkId, authUrl: session.authUrl };
 }
 
-export async function handleOAuthCallback(
+export async function handleDAuthCallback(
   linkId: string,
   subject: `0x${string}`,
-  code: string,
+  dauthResult: DAuthResult,
   provider: OpenID3Provider
 ): Promise<OpenID3Link> {
   const record = getLink(linkId);
@@ -182,19 +183,21 @@ export async function handleOAuthCallback(
     throw Errors.VerificationExpired();
   }
 
-  let userInfo;
-  try {
-    userInfo = await provider.exchangeCode(code, linkId);
-  } catch (err) {
+  // Verify the DAuth proof/JWT
+  const verification = await provider.verifyDAuthResult(dauthResult, record.providerId);
+  if (!verification.valid || !verification.identity) {
     record.state = "failed";
-    record.error = (err as Error).message;
+    record.error = verification.error ?? "DAuth verification failed";
     record.updatedAt = now;
     upsert(record);
-    throw Errors.OpenID3ProviderFailed((err as Error).message);
+    throw Errors.OpenID3ProviderFailed(verification.error ?? "Verification failed");
   }
 
+  const { identity } = verification;
+
+  // Compute nullifier for deduplication
   const nullifier = keccak256(
-    encodePacked(["string", "string"], [userInfo.provider, userInfo.accountId])
+    encodePacked(["string", "string"], [identity.provider, identity.accountId])
   );
   const prior = getLinkByNullifier(nullifier);
   if (prior && prior.subject.toLowerCase() !== subject.toLowerCase()) {
@@ -206,13 +209,14 @@ export async function handleOAuthCallback(
   }
 
   record.state = "linked";
-  record.accountHandle = userInfo.accountHandle;
-  record.accountId = userInfo.accountId;
+  record.accountHandle = identity.accountHandle;
+  record.accountId = identity.accountId;
   record.nullifier = nullifier;
-  record.providerName = userInfo.provider;
+  record.providerName = identity.provider;
   record.updatedAt = now;
   upsert(record);
 
+  // Issue on-chain attestation
   const walletId = process.env.CIRCLE_OPENID3_ISSUER_WALLET_ID;
   if (!walletId) {
     throw Errors.IssuerNotConfigured("openid3", "CIRCLE_OPENID3_ISSUER_WALLET_ID");
@@ -226,7 +230,7 @@ export async function handleOAuthCallback(
   const dataCommitment = keccak256(
     encodePacked(
       ["address", "bytes32", "string", "bool", "uint64"],
-      [subject, nullifier, userInfo.provider, userInfo.verified, BigInt(linkedAt)]
+      [subject, nullifier, identity.provider, identity.verified, BigInt(linkedAt)]
     )
   );
 

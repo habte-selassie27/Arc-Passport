@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
+import { type DAuthProof, type DAuthResult, type VerifiedIdentity, extractIdentity, verifyProof } from "../utils/dauthVerifier.js";
 
 // ── Types ──
 
-export type OpenID3ProviderId = "github" | "twitter" | "discord" | "email";
+export type OpenID3ProviderId = "github" | "twitter" | "discord";
 
 export interface OAuthParams {
   subject: `0x${string}`;
@@ -16,154 +17,148 @@ export interface OAuthSession {
   expiresAt: number;
 }
 
-export interface UserInfoResult {
-  provider: string;
-  accountHandle: string;
-  accountId: string;
-  verified: boolean;
-  profileData?: Record<string, unknown>;
+export interface VerifyResult {
+  valid: boolean;
+  identity?: VerifiedIdentity;
+  error?: string;
 }
 
 // ── Provider Interface ──
 
 export interface OpenID3Provider {
   createOAuthSession(params: OAuthParams): Promise<OAuthSession>;
-  exchangeCode(code: string, sessionId: string): Promise<UserInfoResult>;
+  verifyDAuthResult(result: DAuthResult, providerId: OpenID3ProviderId): Promise<VerifyResult>;
   isConfigured(): boolean;
 }
 
-// ── Real OAuth Provider ──
+// ── OAuth URL Config ──
+// Each provider needs a registered OAuth app. The client IDs below are for
+// development. In production, register your own apps and set env vars.
 
-interface OAuthConfig {
-  github?: { clientId: string; clientSecret: string };
-  twitter?: { clientId: string; clientSecret: string };
-  discord?: { clientId: string; clientSecret: string };
-  email?: { smtpHost: string; smtpUser: string; smtpPass: string };
+interface ProviderOAuthConfig {
+  clientId: string;
+  authorizeUrl: string;
+  scope: string;
+  extraParams?: Record<string, string>;
 }
 
-function envConfig(): OAuthConfig {
+function getOAuthConfig(): Record<OpenID3ProviderId, ProviderOAuthConfig> {
   return {
-    github: process.env.OPENID3_GITHUB_CLIENT_ID
-      ? { clientId: process.env.OPENID3_GITHUB_CLIENT_ID, clientSecret: process.env.OPENID3_GITHUB_CLIENT_SECRET || "" }
-      : undefined,
-    twitter: process.env.OPENID3_TWITTER_CLIENT_ID
-      ? { clientId: process.env.OPENID3_TWITTER_CLIENT_ID, clientSecret: process.env.OPENID3_TWITTER_CLIENT_SECRET || "" }
-      : undefined,
-    discord: process.env.OPENID3_DISCORD_CLIENT_ID
-      ? { clientId: process.env.OPENID3_DISCORD_CLIENT_ID, clientSecret: process.env.OPENID3_DISCORD_CLIENT_SECRET || "" }
-      : undefined,
+    github: {
+      clientId: process.env.OPENID3_GITHUB_CLIENT_ID || "",
+      authorizeUrl: "https://github.com/login/oauth/authorize",
+      scope: "read:user user:email",
+    },
+    twitter: {
+      clientId: process.env.OPENID3_TWITTER_CLIENT_ID || "",
+      authorizeUrl: "https://twitter.com/i/oauth2/authorize",
+      scope: "users.read email.read",
+      extraParams: { response_type: "code" },
+    },
+    discord: {
+      clientId: process.env.OPENID3_DISCORD_CLIENT_ID || "",
+      authorizeUrl: "https://discord.com/api/oauth2/authorize",
+      scope: "identify email",
+      extraParams: { response_type: "code" },
+    },
   };
 }
 
-const OAUTH_ENDPOINTS: Record<string, { authorize: string; token: string; userInfo: string }> = {
-  github: {
-    authorize: "https://github.com/login/oauth/authorize",
-    token: "https://github.com/login/oauth/access_token",
-    userInfo: "https://api.github.com/user",
-  },
-  twitter: {
-    authorize: "https://twitter.com/i/oauth2/authorize",
-    token: "https://api.twitter.com/2/oauth2/token",
-    userInfo: "https://api.twitter.com/2/users/me",
-  },
-  discord: {
-    authorize: "https://discord.com/api/oauth2/authorize",
-    token: "https://discord.com/api/oauth2/token",
-    userInfo: "https://discord.com/api/users/@me",
-  },
-};
+// ── DAuth-Aware Provider ──
 
-export class OpenID3OAuthProvider implements OpenID3Provider {
-  private config: OAuthConfig;
+export class DAuthProvider implements OpenID3Provider {
   private redirectBase: string;
 
-  constructor(config: OAuthConfig, redirectBase: string) {
-    this.config = config;
+  constructor(redirectBase: string) {
     this.redirectBase = redirectBase;
   }
 
   isConfigured(): boolean {
-    return !!(this.config.github || this.config.twitter || this.config.discord);
+    const config = getOAuthConfig();
+    return !!(config.github.clientId || config.twitter.clientId || config.discord.clientId);
   }
 
   async createOAuthSession(params: OAuthParams): Promise<OAuthSession> {
     const sessionId = randomUUID();
-    const cfg = this.config[params.providerId];
-    const endpoints = OAUTH_ENDPOINTS[params.providerId];
-    if (!cfg || !endpoints) {
-      throw new Error(`Provider ${params.providerId} is not configured`);
-    }
-    if (!("clientId" in cfg)) {
-      throw new Error(`Provider ${params.providerId} is not configured`);
+    const config = getOAuthConfig()[params.providerId];
+
+    if (!config.clientId) {
+      throw new Error(
+        `Provider ${params.providerId} is not configured. ` +
+        `Set OPENID3_${params.providerId.toUpperCase()}_CLIENT_ID in your .env.`
+      );
     }
 
-    const redirectUri = params.redirectUri || `${this.redirectBase}/openid3/callback`;
+    // Twitter requires HTTPS — use the ngrok URL if provided.
+    const redirectBase = params.providerId === "twitter"
+      ? (process.env.OPENID3_TWITTER_REDIRECT_BASE || this.redirectBase)
+      : this.redirectBase;
+
+    const redirectUri = `${redirectBase}/openid3/callback`;
     const state = `${sessionId}:${params.subject}`;
 
-    const authUrl = new URL(endpoints.authorize);
-    authUrl.searchParams.set("client_id", cfg.clientId);
+    const authUrl = new URL(config.authorizeUrl);
+    authUrl.searchParams.set("client_id", config.clientId);
     authUrl.searchParams.set("redirect_uri", redirectUri);
     authUrl.searchParams.set("state", state);
-    if (params.providerId === "github") {
-      authUrl.searchParams.set("scope", "read:user user:email");
-    } else if (params.providerId === "twitter") {
-      authUrl.searchParams.set("scope", "users.read tweet.read");
-      authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set("code_challenge", sessionId);
-      authUrl.searchParams.set("code_challenge_method", "S256");
-    } else if (params.providerId === "discord") {
-      authUrl.searchParams.set("scope", "identify email");
-      authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("scope", config.scope);
+    if (config.extraParams) {
+      for (const [k, v] of Object.entries(config.extraParams)) {
+        authUrl.searchParams.set(k, v);
+      }
     }
 
     return {
       sessionId,
       authUrl: authUrl.toString(),
-      expiresAt: Date.now() + 600_000, // 10 minutes
+      expiresAt: Date.now() + 600_000,
     };
   }
 
-  async exchangeCode(_code: string, _sessionId: string): Promise<UserInfoResult> {
-    // In production, exchange the OAuth code for a token and fetch user info.
-    // This is a placeholder — real implementation depends on the specific provider.
-    throw new Error("OAuth code exchange not implemented — use MockOpenID3Provider for tests");
+  async verifyDAuthResult(result: DAuthResult, providerId: OpenID3ProviderId): Promise<VerifyResult> {
+    try {
+      // Verify proof if present
+      if (result.mode === "proof" || result.mode === "both") {
+        const proof = result.mode === "proof"
+          ? (result.data as DAuthProof)
+          : (result.data as { proof: DAuthProof }).proof;
+        if (!(await verifyProof(proof))) {
+          return { valid: false, error: "DAuth proof signature verification failed" };
+        }
+      }
+
+      const identity = await extractIdentity(result, providerId);
+      return { valid: true, identity };
+    } catch (err) {
+      return { valid: false, error: `DAuth verification error: ${(err as Error).message}` };
+    }
   }
 }
 
 // ── Mock Provider (tests only) ──
 
 export class MockOpenID3Provider implements OpenID3Provider {
-  public shouldFail = false;
-  public failReason = "Mock verification failed";
-  public fixedHandle = "test-user";
-  public fixedAccountId = "mock-account-123";
-
-  private sessionCounter = 0;
-
   isConfigured(): boolean {
     return true;
   }
 
   async createOAuthSession(params: OAuthParams): Promise<OAuthSession> {
-    this.sessionCounter++;
     return {
-      sessionId: `mock-session-${this.sessionCounter}`,
+      sessionId: `mock-session-${Date.now()}`,
       authUrl: `https://mock-oauth.example.com/auth?subject=${params.subject}&provider=${params.providerId}`,
       expiresAt: Date.now() + 3600_000,
     };
   }
 
-  async exchangeCode(_code: string, _sessionId: string): Promise<UserInfoResult> {
-    if (this.shouldFail) {
-      throw new Error(this.failReason);
-    }
-
+  async verifyDAuthResult(_result: DAuthResult, _providerId: OpenID3ProviderId): Promise<VerifyResult> {
     return {
-      provider: "mock-oauth",
-      accountHandle: this.fixedHandle,
-      accountId: this.fixedAccountId,
-      verified: true,
-      profileData: { mock: true },
+      valid: true,
+      identity: {
+        provider: "mock-oauth",
+        accountHandle: "test-user",
+        accountId: "mock-account-123",
+        verified: true,
+      },
     };
   }
 }
@@ -171,9 +166,10 @@ export class MockOpenID3Provider implements OpenID3Provider {
 // ── Factory ──
 
 export function getOpenID3Provider(): OpenID3Provider {
-  const config = envConfig();
   const redirectBase = process.env.OPENID3_REDIRECT_BASE || "http://localhost:5173";
-  const provider = new OpenID3OAuthProvider(config, redirectBase);
+  const provider = new DAuthProvider(redirectBase);
   if (provider.isConfigured()) return provider;
-  return new MockOpenID3Provider();
+  throw new Error(
+    "OpenID3 providers not configured. Set OPENID3_*_CLIENT_ID env vars for at least one provider (GitHub, Twitter, Discord)."
+  );
 }
