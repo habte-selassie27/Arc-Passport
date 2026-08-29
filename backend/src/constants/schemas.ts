@@ -417,3 +417,11 @@ export function getSchemaById(id: `0x${string}`): SchemaDefinition | undefined {
   }
   return undefined;
 }
+
+/** Maps schemaId (lowercase) → service key for fast lookups. */
+export const SCHEMA_ID_TO_SERVICE: Record<string, ServiceKey> = {};
+for (const [service, schemas] of Object.entries(ALL_SCHEMAS)) {
+  for (const def of Object.values(schemas as Record<string, SchemaDefinition>)) {
+    if (def.id) SCHEMA_ID_TO_SERVICE[def.id.toLowerCase()] = service as ServiceKey;
+  }
+}
