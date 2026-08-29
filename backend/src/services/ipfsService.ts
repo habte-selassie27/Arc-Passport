@@ -4,17 +4,23 @@ const ALLOWED_IPFS_GATEWAYS = [
   "https://cloudflare-ipfs.com/ipfs/",
 ];
 
-export async function uploadToIpfs(data: Record<string, unknown>): Promise<string> {
+function pinataHeaders(): Record<string, string> {
+  const jwt = process.env.PINATA_JWT;
+  if (jwt) return { Authorization: `Bearer ${jwt}` };
   const apiKey = process.env.PINATA_API_KEY;
   const secretKey = process.env.PINATA_SECRET_KEY;
-  if (!apiKey || !secretKey) throw new Error("Pinata credentials not configured");
+  if (apiKey && secretKey) {
+    return { pinata_api_key: apiKey, pinata_secret_api_key: secretKey };
+  }
+  throw new Error("Pinata credentials not configured");
+}
 
+export async function uploadToIpfs(data: Record<string, unknown>): Promise<string> {
   const response = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      pinata_api_key: apiKey,
-      pinata_secret_api_key: secretKey,
+      ...pinataHeaders(),
     },
     body: JSON.stringify(data),
   });
@@ -51,16 +57,9 @@ export async function fetchFromIpfs(uri: string): Promise<Record<string, unknown
 }
 
 export async function unpinFromIpfs(cid: string): Promise<void> {
-  const apiKey = process.env.PINATA_API_KEY;
-  const secretKey = process.env.PINATA_SECRET_KEY;
-  if (!apiKey || !secretKey) throw new Error("Pinata credentials not configured");
-
   const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${cid}`, {
     method: "DELETE",
-    headers: {
-      pinata_api_key: apiKey,
-      pinata_secret_api_key: secretKey,
-    },
+    headers: pinataHeaders(),
   });
 
   if (!response.ok) {
