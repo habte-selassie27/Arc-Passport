@@ -111,6 +111,18 @@ export class BaseAttestationService {
     return this._pollForHash(txId);
   }
 
+  async adminRevoke(claimId: `0x${string}`): Promise<`0x${string}`> {
+    this._assertBlockchain();
+    await this._assertClaimExists(claimId);
+
+    const txId = await this._submitToCircle(
+      "adminRevoke(bytes32)",
+      [claimId],
+      ADDRESSES.attestationRegistry!
+    );
+    return this._pollForHash(txId);
+  }
+
   async batchIssue(inputs: AttestInput[]): Promise<{ claimIds: `0x${string}`[]; successes: boolean[] }> {
     if (inputs.length === 0 || inputs.length > 100) {
       throw Errors.InvalidBatchSize(inputs.length);
