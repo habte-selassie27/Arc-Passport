@@ -4,20 +4,16 @@ import { LogoMark } from "./LogoMark";
 import { WalletChip } from "./WalletChip";
 
 const NAV_LINKS = [
-  { to: "/", label: "Home", exact: true },
-  { to: "/register", label: "Register" },
+  { to: "/", label: "Home" },
   { to: "/passport", label: "Passport" },
-  { to: "/score", label: "Score" },
-  { to: "/zk", label: "ZK" },
-  { to: "/eas", label: "EAS" },
-  { to: "/human-node", label: "Humanode" },
-  { to: "/web2-proof", label: "Web2 Proof" },
-  { to: "/openid3", label: "Identity" },
+  { to: "/register", label: "Register" },
+  { to: "/credentials", label: "Credentials" },
   { to: "/verify", label: "Verify" },
-  { to: "/studio", label: "Studio" },
 ];
 
-export function Navbar() {
+const STUDIO_LINK = { to: "/studio", label: "Studio" };
+
+export function Navbar({ className }: { className?: string } = {}) {
   const { pathname } = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const inStudio = pathname.startsWith("/studio");
@@ -42,7 +38,7 @@ export function Navbar() {
   }, []);
 
   return (
-    <nav className={`nav ${inStudio ? "nav--hidden" : ""}`} aria-label="Main">
+    <nav className={`nav ${inStudio ? "nav--hidden" : ""} ${className ?? ""}`} aria-label="Main">
       <div className="nav__inner">
         <Link to="/" className="nav__brand" aria-label="ArcPass home">
           <LogoMark size={22} />
@@ -50,12 +46,12 @@ export function Navbar() {
         </Link>
 
         <div className="nav__links">
-          {NAV_LINKS.map(({ to, label, exact }) => (
+          {NAV_LINKS.map(({ to, label }) => (
             <Link
               key={to}
               to={to}
-              className={`nav__link ${(exact ? pathname === to : pathname.startsWith(to)) ? "nav__link--active" : ""}`}
-              aria-current={(exact ? pathname === to : pathname.startsWith(to)) ? "page" : undefined}
+              className={`nav__link ${pathname.startsWith(to) ? "nav__link--active" : ""}`}
+              aria-current={pathname.startsWith(to) ? "page" : undefined}
             >
               {label}
             </Link>
@@ -63,6 +59,14 @@ export function Navbar() {
         </div>
 
         <div className="nav__right">
+          <Link
+            to={STUDIO_LINK.to}
+            className={`nav__link ${pathname.startsWith(STUDIO_LINK.to) ? "nav__link--active" : ""}`}
+            aria-current={pathname.startsWith(STUDIO_LINK.to) ? "page" : undefined}
+            style={{ opacity: 0.7, fontSize: "var(--text-sm)" }}
+          >
+            {STUDIO_LINK.label}
+          </Link>
           <WalletChip />
           <button
             type="button"
@@ -87,14 +91,23 @@ export function Navbar() {
       {drawerOpen && (
         <div className="drawer" onClick={() => setDrawerOpen(false)}>
           <div className="drawer__panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Menu">
-            {NAV_LINKS.map(({ to, label, exact }) => {
-              const active = exact ? pathname === to : pathname.startsWith(to);
+            {NAV_LINKS.map(({ to, label }) => {
+              const active = pathname.startsWith(to);
               return (
                 <Link key={to} to={to} className={`drawer__link ${active ? "drawer__link--active" : ""}`} aria-current={active ? "page" : undefined}>
                   {label}
                 </Link>
               );
             })}
+            <div style={{ borderTop: "1px solid var(--color-border)", marginTop: "var(--space-3)", paddingTop: "var(--space-3)" }}>
+              <Link
+                to={STUDIO_LINK.to}
+                className={`drawer__link ${pathname.startsWith(STUDIO_LINK.to) ? "drawer__link--active" : ""}`}
+                aria-current={pathname.startsWith(STUDIO_LINK.to) ? "page" : undefined}
+              >
+                {STUDIO_LINK.label}
+              </Link>
+            </div>
           </div>
         </div>
       )}
