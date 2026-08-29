@@ -60,11 +60,12 @@ router.get("/schemas", (_req, res) => {
     // Add canonical schemas from constants
     for (const [serviceKey, schemasMap] of Object.entries(ALL_SCHEMAS)) {
       for (const [key, def] of Object.entries(schemasMap as Record<string, any>)) {
+        const fieldsArray = Array.isArray(def.fields) ? def.fields : [];
         schemas.push({
           uid: def.id ?? `0x${"0".repeat(64)}`,
           name: def.name ?? key,
           description: def.description ?? `${serviceKey} attestation schema`,
-          fields: def.fields ?? "",
+          fields: fieldsArray.map((f: { name: string; type: string }) => `${f.name}:${f.type}`).join(", "),
           registry: "canonical",
         });
       }
@@ -143,13 +144,14 @@ router.get("/schemas/:uid", async (req, res) => {
     }
 
     const claims = getClaimsBySchema(uid);
+    const fieldsArray = Array.isArray(found.fields) ? found.fields : [];
     res.json({
       success: true,
       data: {
         uid,
         name: found.name,
         description: found.description,
-        fields: found.fields,
+        fields: fieldsArray.map((f: { name: string; type: string }) => `${f.name}:${f.type}`).join(", "),
         registry: "canonical",
         attestationCount: claims.length,
       },
