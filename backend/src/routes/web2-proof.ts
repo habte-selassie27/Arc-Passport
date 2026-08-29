@@ -27,10 +27,11 @@ function isValidAddress(addr: string): addr is `0x${string}` {
 }
 
 function handleError(res: any, err: unknown) {
+  console.error("[web2-proof] Error:", (err as Error).message, (err as Error).stack?.slice(0, 300));
   if (err instanceof ArcPassError) {
     res.status(err.status).json({ success: false, error: { code: err.code, message: err.message } });
   } else {
-    res.status(500).json({ success: false, error: { code: "PROVIDER_ERROR", message: "Verification failed" } });
+    res.status(500).json({ success: false, error: { code: "PROVIDER_ERROR", message: (err as Error).message || "Verification failed" } });
   }
 }
 
@@ -58,7 +59,7 @@ router.get("/verify/:address", async (req, res) => {
   try {
     const { address } = req.params;
     if (!isValidAddress(address)) {
-      throw Errors.InvalidSubject();
+      throw Errors.InvalidSubject(address);
     }
     const status = await getWeb2ProofStatus(address);
     res.json({ success: true, data: { subject: address, ...status } });
