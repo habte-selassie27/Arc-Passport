@@ -40,9 +40,7 @@ export function Settings() {
       </p>
 
       {error && (
-        <div className="sim-box--failed sim-box" style={{ marginBottom: "var(--space-4)" }}>
-          <p className="sim-box__row"><span className="sim-box__fail" aria-hidden="true">✗</span> {error}</p>
-        </div>
+        <p className="t-sm" style={{ color: "var(--color-danger)", marginBottom: "var(--space-4)" }}>Failed to fetch</p>
       )}
 
       {data && (
