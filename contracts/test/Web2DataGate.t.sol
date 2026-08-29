@@ -84,7 +84,7 @@ contract Web2DataGateTest is Test {
         bytes32 claimId = _issue();
         assertTrue(gate.isWeb2Verified(subject));
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         assertFalse(gate.isWeb2Verified(subject));
