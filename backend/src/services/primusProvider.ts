@@ -1,5 +1,6 @@
-import { randomUUID } from "crypto";
-import { join } from "path";
+import { PrimusNetwork } from "@primuslabs/network-core-sdk";
+import { ethers } from "ethers";
+import { createHmac } from "crypto";
 
 // ── Types ──
 
@@ -19,9 +20,9 @@ export interface VerificationResult {
   verified: boolean;
   templateId: string;
   provider: string;
-  dataHash: string; // keccak256 of verified data
+  dataHash: string;
   checkedAt: number;
-  attestationProof?: string; // Primus attestation blob
+  attestationProof?: string;
   error?: string;
 }
 
@@ -32,85 +33,169 @@ export interface PrimusProvider {
   verifyProof(taskId: string): Promise<VerificationResult>;
 }
 
-// ── Real Primus API Provider ──
+// ── Template → Request mapping ──
 
-interface PrimusApiConfig {
-  apiKey: string;
-  apiSecret: string;
-  baseUrl: string;
-  redirectUri: string;
+interface TemplateRequest {
+  url: string;
+  method: string;
+  header: Record<string, string>;
+  body: string;
+  responseResolves: { keyName: string; parseType: string; parsePath: string }[];
 }
 
-function envConfig(): PrimusApiConfig | null {
-  const apiKey = process.env.PRIMUS_API_KEY;
-  const apiSecret = process.env.PRIMUS_API_SECRET;
-  const baseUrl = process.env.PRIMUS_API_BASE_URL || "https://api.primuslabs.xyz";
-  const redirectUri = process.env.PRIMUS_REDIRECT_URI;
-  if (!apiKey || !apiSecret || !redirectUri) return null;
-  return { apiKey, apiSecret, baseUrl, redirectUri };
+function getTemplateRequest(templateId: string): TemplateRequest {
+  switch (templateId) {
+    case "github-account":
+      return {
+        url: "https://api.github.com/user",
+        method: "GET",
+        header: { Accept: "application/vnd.github.v3+json" },
+        body: "",
+        responseResolves: [
+          { keyName: "login", parseType: "json", parsePath: "$.login" },
+          { keyName: "id", parseType: "json", parsePath: "$.id" },
+          { keyName: "type", parseType: "json", parsePath: "$.type" },
+        ],
+      };
+    case "twitter-account":
+      return {
+        url: "https://api.x.com/2/users/me",
+        method: "GET",
+        header: {},
+        body: "",
+        responseResolves: [
+          { keyName: "username", parseType: "json", parsePath: "$.data.username" },
+          { keyName: "name", parseType: "json", parsePath: "$.data.name" },
+        ],
+      };
+    case "discord-account":
+      return {
+        url: "https://discord.com/api/v10/users/@me",
+        method: "GET",
+        header: {},
+        body: "",
+        responseResolves: [
+          { keyName: "username", parseType: "json", parsePath: "$.username" },
+          { keyName: "id", parseType: "json", parsePath: "$.id" },
+        ],
+      };
+    default:
+      return {
+        url: "https://httpbin.org/get",
+        method: "GET",
+        header: {},
+        body: "",
+        responseResolves: [
+          { keyName: "origin", parseType: "json", parsePath: "$.origin" },
+        ],
+      };
+  }
 }
 
-function signedFetch(config: PrimusApiConfig, path: string, init?: RequestInit): Promise<Response> {
-  const url = `${config.baseUrl}${path}`;
-  const timestamp = Date.now().toString();
-  const message = `${timestamp}:${path}`;
-  // In production, sign with HMAC-SHA256 using apiSecret.
-  // This is a placeholder — the real SDK handles signing.
-  return fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Api-Key": config.apiKey,
-      "X-Timestamp": timestamp,
-      "X-Signature": "placeholder-hmac-signature",
-      ...init?.headers,
-    },
-  });
-}
+// ── Primus SDK Provider ──
 
-export class PrimusApiProvider implements PrimusProvider {
-  constructor(private config: PrimusApiConfig) {}
+let primusNetwork: PrimusNetwork | null = null;
+let initPromise: Promise<PrimusNetwork> | null = null;
 
-  async createVerificationTask(params: TaskCreationParams): Promise<TaskCreationResult> {
-    const res = await signedFetch(this.config, "/v1/tasks", {
-      method: "POST",
-      body: JSON.stringify({
-        templateId: params.templateId,
-        subject: params.subject,
-        callbackUrl: params.callbackUrl,
-        redirectUri: this.config.redirectUri,
-      }),
-    });
+async function getPrimusNetwork(): Promise<PrimusNetwork> {
+  if (primusNetwork) return primusNetwork;
+  if (initPromise) return initPromise;
 
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Primus task creation failed (${res.status}): ${body}`);
+  initPromise = (async () => {
+    const privateKey = process.env.PRIMUS_PRIVATE_KEY;
+    const chainId = parseInt(process.env.PRIMUS_CHAIN_ID || "84532", 10);
+
+    if (!privateKey) {
+      throw new Error("PRIMUS_PRIVATE_KEY not configured");
     }
 
-    const data = await res.json();
+    const provider = new ethers.providers.JsonRpcProvider(
+      chainId === 84532
+        ? "https://sepolia.base.org"
+        : "https://mainnet.base.org"
+    );
+    const wallet = new ethers.Wallet(privateKey, provider);
+
+    const network = new PrimusNetwork();
+    await network.init(wallet, chainId, "auto", "ArcPass");
+    primusNetwork = network;
+    console.log(`[Primus] Initialized on chain ${chainId}`);
+    return network;
+  })();
+
+  return initPromise;
+}
+
+export class PrimusSdkProvider implements PrimusProvider {
+  async createVerificationTask(params: TaskCreationParams): Promise<TaskCreationResult> {
+    const network = await getPrimusNetwork();
+    const templateRequest = getTemplateRequest(params.templateId);
+
+    const submitResult = await network.submitTask({
+      address: params.subject,
+    }) as { taskId: string; taskTxHash: string; taskAttestors: string[] };
+
+    console.log(`[Primus] Task submitted: ${submitResult.taskId}`);
+
+    const attestParams = {
+      address: params.subject,
+      ...submitResult,
+      requests: [templateRequest],
+      responseResolves: [[templateRequest.responseResolves[0]]],
+    };
+
+    const attestResult = await network.attest(attestParams, 60000);
+
     return {
-      taskId: data.taskId ?? data.id,
-      authUrl: data.authUrl ?? data.url,
-      expiresAt: data.expiresAt ?? Date.now() + 3600_000,
+      taskId: submitResult.taskId,
+      authUrl: `${process.env.PRIMUS_REDIRECT_URI || "http://localhost:5173/web2-proof"}?taskId=${submitResult.taskId}`,
+      expiresAt: Date.now() + 3600_000,
     };
   }
 
   async verifyProof(taskId: string): Promise<VerificationResult> {
-    const res = await signedFetch(this.config, `/v1/tasks/${taskId}`);
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Primus task status failed (${res.status}): ${body}`);
-    }
+    const network = await getPrimusNetwork();
 
-    const data = await res.json();
-    return {
-      verified: data.verified ?? data.status === "verified",
-      templateId: data.templateId,
-      provider: data.provider ?? "primus-zktls",
-      dataHash: data.dataHash,
-      checkedAt: data.checkedAt ?? Math.floor(Date.now() / 1000),
-      attestationProof: data.attestationProof,
-    };
+    try {
+      const taskResult = await network.verifyAndPollTaskResult({
+        taskId,
+        timeoutMs: 30000,
+      });
+
+      if (taskResult && taskResult.length > 0) {
+        const result = taskResult[0];
+        const dataHash = ethers.utils.keccak256(
+          ethers.utils.toUtf8Bytes(JSON.stringify(result.attestation))
+        );
+
+        return {
+          verified: true,
+          templateId: "web2-data",
+          provider: "primus-zktls",
+          dataHash,
+          checkedAt: Math.floor(Date.now() / 1000),
+          attestationProof: JSON.stringify(result),
+        };
+      }
+
+      return {
+        verified: false,
+        templateId: "unknown",
+        provider: "primus-zktls",
+        dataHash: "0x" + "00".repeat(32),
+        checkedAt: Math.floor(Date.now() / 1000),
+        error: "No attestation results",
+      };
+    } catch (err) {
+      return {
+        verified: false,
+        templateId: "unknown",
+        provider: "primus-zktls",
+        dataHash: "0x" + "00".repeat(32),
+        checkedAt: Math.floor(Date.now() / 1000),
+        error: (err as Error).message,
+      };
+    }
   }
 }
 
@@ -128,7 +213,7 @@ export class MockPrimusProvider implements PrimusProvider {
     this.taskCounter++;
     return {
       taskId: `task-mock-${this.taskCounter}`,
-      authUrl: `https://mock-primus.example.com/auth?subject=${params.subject}&template=${params.templateId}`,
+      authUrl: `${process.env.PRIMUS_REDIRECT_URI || "http://localhost:5173/web2-proof"}?taskId=task-mock-${this.taskCounter}`,
       expiresAt: Date.now() + 3600_000,
     };
   }
@@ -159,7 +244,9 @@ export class MockPrimusProvider implements PrimusProvider {
 // ── Factory ──
 
 export function getPrimusProvider(): PrimusProvider {
-  const cfg = envConfig();
-  if (!cfg) return new MockPrimusProvider();
-  return new PrimusApiProvider(cfg);
+  if (process.env.PRIMUS_PRIVATE_KEY && process.env.PRIMUS_API_KEY) {
+    return new PrimusSdkProvider();
+  }
+  console.warn("[Primus] No credentials configured, using mock provider");
+  return new MockPrimusProvider();
 }
