@@ -90,6 +90,7 @@ function AppInner() {
           <Route path="/world-id" element={<WorldIdPage />} />
           <Route path="/web2-proof" element={<Web2ProofPage />} />
           <Route path="/openid3" element={<OpenID3IdentityPage />} />
+          <Route path="/openid3/callback" element={<OpenID3IdentityPage />} />
           <Route path="/developer/verify" element={<DeveloperVerifyPage />} />
           <Route path="/services/:service" element={<ServiceVerifyPage />} />
           <Route path="/services/:service/:address" element={<ServiceVerifyPage />} />
