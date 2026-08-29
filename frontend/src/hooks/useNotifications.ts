@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSignMessage } from "wagmi";
 import { signedFetch } from "../utils/signedApi";
+import { apiUrl } from "../config/api";
 
 export interface AppNotification {
   id:        string;
@@ -24,19 +25,21 @@ export function useNotifications(address: `0x${string}` | undefined) {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await signedFetch<{ notifications: AppNotification[] }>({
-        path: "/v1/notifications",
-        address,
-        signMessage: signMessageAsync,
-      });
-      setNotifications(data.notifications);
-      setUnread(data.notifications.filter((n) => !n.read).length);
+      const res = await fetch(apiUrl(`/v1/notifications/${address}`));
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message ?? "Failed to load notifications");
+      setNotifications(json.data.notifications);
+      setUnread(json.data.notifications.filter((n: AppNotification) => !n.read).length);
     } catch (err: unknown) {
       setError((err as Error).message);
     } finally {
       setIsLoading(false);
     }
-  }, [address, signMessageAsync]);
+  }, [address]);
+
+  useEffect(() => {
+    if (address) load();
+  }, [address, load]);
 
   const markRead = useCallback(
     async (id: string) => {
