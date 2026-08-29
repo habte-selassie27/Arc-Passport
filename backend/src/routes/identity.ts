@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { getIdentity } from "../services/identityService.js";
+import { getIdentityBalance, getRegistrationHistory } from "../services/identityService.js";
 import { requireSignedNonce } from "../middleware/auth.js";
 import { getClaimsBySubject } from "../indexer/claimIndexer.js";
 import { isValidAddress } from "../utils/address.js";
@@ -29,15 +29,35 @@ router.get("/:address", async (req: Request, res: Response) => {
       });
       return;
     }
-    const identity = await getIdentity(address as `0x${string}`);
-    if (!identity) {
+    const balance = await getIdentityBalance(address as `0x${string}`);
+    if (balance === 0) {
       res.status(404).json({
         success: false,
         error: { code: "IDENTITY_NOT_FOUND", message: `No identity for ${address}` },
       });
       return;
     }
-    res.json({ success: true, data: identity });
+    res.json({ success: true, data: { address, registered: true, balance } });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: { code: "FETCH_ERROR", message: (err as Error).message },
+    });
+  }
+});
+
+router.get("/:address/history", async (req: Request, res: Response) => {
+  try {
+    const address = req.params.address;
+    if (!isValidAddress(address)) {
+      res.status(400).json({
+        success: false,
+        error: { code: "INVALID_ADDRESS", message: "Invalid Ethereum address" },
+      });
+      return;
+    }
+    const history = await getRegistrationHistory(address as `0x${string}`);
+    res.json({ success: true, data: history });
   } catch (err) {
     res.status(500).json({
       success: false,
