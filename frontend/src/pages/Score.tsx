@@ -1,25 +1,23 @@
-import { useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { useReadContract } from "wagmi";
+import { useState, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useAccount, useSignMessage } from "wagmi";
 import { usePassport } from "../hooks/usePassport";
 import { useOnChainScore, useHumanityThreshold } from "../hooks/useScore";
 import { useScoreHistory } from "../hooks/useScoreHistory";
-import { ADDRESSES } from "../config/addresses";
-import { SCORE_REGISTRY_ABI } from "../abis/ScoreRegistry";
 import { useWallet } from "../contexts/WalletContext";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { AddressDisplay } from "../components/ui/AddressDisplay";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { CardSkeleton } from "../components/ui/Skeleton";
 import { ScoreDisplay } from "../components/passport/ScoreDisplay";
 import { ScoreHistoryChart } from "../components/passport/ScoreHistoryChart";
 import { LogoMark } from "../components/ui/LogoMark";
-import { ALL_SERVICE_KEYS, SERVICE_LABELS, type ServiceKey } from "../types/passport";
+import { SERVICE_LABELS, type ServiceKey } from "../types/passport";
 import { apiUrl } from "../config/api";
+import { signedFetch } from "../utils/signedApi";
 
 function isValidAddress(addr: string): addr is `0x${string}` {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);
@@ -63,8 +61,69 @@ function ScoreDetail({ address }: { address: `0x${string}` }) {
   const { score: onChainScore, isLoading: scoreLoading } = useOnChainScore(address);
   const { data: passport, isLoading: passportLoading, error: passportError, refetch } = usePassport(address);
   const { data: threshold } = useHumanityThreshold();
+  const { isConnected, address: connectedAddress } = useWallet();
+  const { address: walletAddress } = useAccount();
+  const { signMessageAsync } = useSignMessage();
 
   const isLoading = scoreLoading || passportLoading;
+  const isOwner = isConnected && connectedAddress?.toLowerCase() === address.toLowerCase();
+
+  // Score computation state
+  const [computing, setComputing] = useState(false);
+  const [computeError, setComputeError] = useState<string | null>(null);
+  const [computeSuccess, setComputeSuccess] = useState(false);
+
+  // On-chain commit state
+  const [committing, setCommitting] = useState(false);
+  const [commitError, setCommitError] = useState<string | null>(null);
+  const [commitSuccess, setCommitSuccess] = useState(false);
+
+  const handleComputeScore = useCallback(async () => {
+    setComputing(true);
+    setComputeError(null);
+    setComputeSuccess(false);
+    try {
+      const result = await signedFetch<{ score: number }>({
+        path: `/score/${address}`,
+        address: walletAddress!,
+        signMessage: signMessageAsync,
+      });
+      setComputeSuccess(true);
+      refetch();
+    } catch (err) {
+      setComputeError((err as Error).message);
+    } finally {
+      setComputing(false);
+    }
+  }, [address, walletAddress, signMessageAsync, refetch]);
+
+  const handleCommitOnChain = useCallback(async () => {
+    if (!onChainScore) return;
+    setCommitting(true);
+    setCommitError(null);
+    setCommitSuccess(false);
+    try {
+      const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60; // 30 days
+      await signedFetch({
+        path: "/score/commit",
+        address: walletAddress!,
+        signMessage: signMessageAsync,
+        method: "POST",
+        body: {
+          subject: address,
+          scorerId: 0,
+          score: onChainScore.score,
+          expiresAt,
+          dataCommitment: "0x0000000000000000000000000000000000000000000000000000000000000000",
+        },
+      });
+      setCommitSuccess(true);
+    } catch (err) {
+      setCommitError((err as Error).message);
+    } finally {
+      setCommitting(false);
+    }
+  }, [address, walletAddress, signMessageAsync, onChainScore]);
 
   return (
     <div className="grid gap-6">
@@ -77,20 +136,76 @@ function ScoreDetail({ address }: { address: `0x${string}` }) {
             <LogoMark size={32} className="empty__icon" />
             <p className="empty__title">No score yet</p>
             <p className="empty__body">
-              This address does not have an on-chain humanity score. Scores are computed
-              from verifiable attestations and committed on-chain by authorized scorers.
+              This address does not have an on-chain humanity score. Compute a score from
+              verifiable attestations or commit one on-chain.
             </p>
-            <div className="empty__action" style={{ marginTop: "var(--space-4)" }}>
+            <div className="empty__action" style={{ marginTop: "var(--space-4)", display: "flex", gap: "var(--space-2)", justifyContent: "center" }}>
+              <Button
+                size="sm"
+                loading={computing}
+                disabled={computing}
+                onClick={handleComputeScore}
+              >
+                Compute Score
+              </Button>
               <a href={`/passport/${address}`} className="btn btn--ghost btn--sm">
                 View Passport
               </a>
             </div>
+            {computeError && (
+              <p className="t-xs" style={{ color: "var(--color-danger)", marginTop: "var(--space-2)" }}>
+                {computeError}
+              </p>
+            )}
           </div>
         )}
 
         {!isLoading && onChainScore && (
           <div>
             <ScoreDisplay score={onChainScore} variant="detailed" />
+            {/* Action buttons */}
+            <div className="flex gap-2" style={{ marginTop: "var(--space-4)", borderTop: "1px solid var(--color-border)", paddingTop: "var(--space-4)" }}>
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={computing}
+                disabled={computing}
+                onClick={handleComputeScore}
+              >
+                Refresh Score
+              </Button>
+              {isOwner && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  loading={committing}
+                  disabled={committing || !onChainScore.isValid}
+                  onClick={handleCommitOnChain}
+                >
+                  Commit On-Chain
+                </Button>
+              )}
+            </div>
+            {computeError && (
+              <p className="t-xs" style={{ color: "var(--color-danger)", marginTop: "var(--space-2)" }}>
+                {computeError}
+              </p>
+            )}
+            {computeSuccess && (
+              <p className="t-xs" style={{ color: "var(--color-verified)", marginTop: "var(--space-2)" }}>
+                Score refreshed successfully.
+              </p>
+            )}
+            {commitError && (
+              <p className="t-xs" style={{ color: "var(--color-danger)", marginTop: "var(--space-2)" }}>
+                {commitError}
+              </p>
+            )}
+            {commitSuccess && (
+              <p className="t-xs" style={{ color: "var(--color-verified)", marginTop: "var(--space-2)" }}>
+                Score committed on-chain.
+              </p>
+            )}
           </div>
         )}
       </Card>
@@ -102,6 +217,13 @@ function ScoreDetail({ address }: { address: `0x${string}` }) {
       {!isLoading && !passportError && passport?.trustScore && (
         <Card>
           <TrustScoreDetail passport={passport} />
+        </Card>
+      )}
+
+      {/* Score explanation */}
+      {!isLoading && (
+        <Card>
+          <ScoreExplanation />
         </Card>
       )}
 
@@ -221,12 +343,79 @@ function TrustScoreDetail({ passport }: { passport: any }) {
   );
 }
 
+function ScoreExplanation() {
+  return (
+    <div>
+      <p className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>
+        How Scores Work
+      </p>
+      <div className="grid gap-3">
+        <ExplanationRow
+          icon="1"
+          title="Attestations are issued"
+          description="Authorized issuers issue verifiable credentials (attestations) to your wallet on-chain. Each attestation commits a Merkle root of the claim data."
+        />
+        <ExplanationRow
+          icon="2"
+          title="Score is computed"
+          description="A weighted algorithm evaluates your attestations across10 categories (Identity, KYC, Credentials, DAO, Reputation, Employment, Education, Social, Custom, ZK Passport). Each category has a weight reflecting its trust signal strength."
+        />
+        <ExplanationRow
+          icon="3"
+          title="Score is committed on-chain"
+          description="The computed score is committed to the ScoreRegistry contract on-chain, creating a transparent, auditable record. Scores expire after30 days and need recomputation."
+        />
+        <ExplanationRow
+          icon="4"
+          title="Apps verify your score"
+          description="Decentralized apps query your on-chain score to gate access, votes, or airdrops. A score above the threshold (default: 20) indicates a verified human."
+        />
+      </div>
+      <div style={{ marginTop: "var(--space-4)", padding: "var(--space-3)", borderRadius: "var(--radius-sm)", background: "var(--color-surface-1)" }}>
+        <p className="t-xs c-subtle">
+          <strong>Category weights:</strong> Identity (1.0), KYC (1.0), Credentials (0.8), Reputation (0.7), Employment (0.7), DAO (0.6), Education (0.5), Social (0.4), Custom (0.3), ZK Passport (0.9).
+          Schema bonuses apply for government ID, liveness, and KYC attestations.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ExplanationRow({ icon, title, description }: { icon: string; title: string; description: string }) {
+  return (
+    <div className="flex gap-3" style={{ padding: "var(--space-2) 0" }}>
+      <div
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: "50%",
+          background: "var(--color-surface-1)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <span className="mono t-xs" style={{ color: "var(--color-verified)" }}>{icon}</span>
+      </div>
+      <div>
+        <p className="t-sm" style={{ fontWeight: 600 }}>{title}</p>
+        <p className="t-xs c-subtle" style={{ marginTop: 2 }}>{description}</p>
+      </div>
+    </div>
+  );
+}
+
 function AttestationCoverage({ passport }: { passport: any }) {
   const allClaims = Object.values(passport.services as Record<string, any>).flatMap(
     (s: any) => s.claims ?? []
   );
   const validClaims = allClaims.filter((c: any) => c.valid);
-  const uniqueIssuers = new Set(validClaims.map((c: any) => c.issuer.toLowerCase())).size;
+  const allIssuers = new Set(allClaims.map((c: any) => c.issuer.toLowerCase())).size;
+  const validIssuers = new Set(validClaims.map((c: any) => c.issuer.toLowerCase())).size;
+  const servicesWithClaims = Object.keys(passport.services).filter(
+    (k: string) => (passport.services[k]?.claimCount ?? 0) > 0
+  ).length;
 
   return (
     <div>
@@ -236,10 +425,10 @@ function AttestationCoverage({ passport }: { passport: any }) {
       <div className="grid grid-cols-2 gap-x-6 gap-y-2">
         <DataRow label="Total attestations" value={allClaims.length} />
         <DataRow label="Valid attestations" value={validClaims.length} color="var(--color-verified)" />
-        <DataRow label="Unique issuers" value={uniqueIssuers} />
-        <DataRow label="Services covered" value={Object.keys(passport.services).filter(
-          (k: string) => (passport.services[k]?.claimCount ?? 0) > 0
-        ).length} />
+        <DataRow label="Unique issuers (all)" value={allIssuers} />
+        <DataRow label="Unique issuers (valid)" value={validIssuers} color="var(--color-verified)" />
+        <DataRow label="Services covered" value={servicesWithClaims} />
+        <DataRow label="Revoked" value={allClaims.length - validClaims.length} color="var(--color-danger)" />
       </div>
     </div>
   );
@@ -253,6 +442,7 @@ function VerificationStatus({ passport }: { passport: any }) {
       label: SERVICE_LABELS[key as ServiceKey] ?? key,
       verified: s.verified,
       claimCount: s.claimCount,
+      validCount: (s.claims ?? []).filter((c: any) => c.valid).length,
     }));
 
   return (
@@ -274,17 +464,25 @@ function VerificationStatus({ passport }: { passport: any }) {
                 background: "var(--color-surface-1)",
               }}
             >
-              <span className="t-sm">{svc.label}</span>
-              <span
-                className="chip"
-                style={{
-                  background: svc.verified ? "rgba(0,229,160,0.15)" : "rgba(245,158,11,0.15)",
-                  color: svc.verified ? "var(--color-verified)" : "var(--color-warning)",
-                  fontSize: "0.7rem",
-                }}
-              >
-                {svc.verified ? "VALID" : "NO CLAIMS"}
-              </span>
+              <div className="flex items-center gap-2">
+                <CategoryIcon service={svc.key} />
+                <span className="t-sm">{svc.label}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="mono t-xs c-subtle">
+                  {svc.validCount}/{svc.claimCount}
+                </span>
+                <span
+                  className="chip"
+                  style={{
+                    background: svc.verified ? "rgba(0,229,160,0.15)" : "rgba(245,158,11,0.15)",
+                    color: svc.verified ? "var(--color-verified)" : "var(--color-warning)",
+                    fontSize: "0.7rem",
+                  }}
+                >
+                  {svc.verified ? "VALID" : "NO VALID CLAIMS"}
+                </span>
+              </div>
             </div>
           ))}
         </div>
@@ -362,18 +560,33 @@ function DataRow({ label, value, color }: { label: string; value: number | strin
 
 function CategoryIcon({ service }: { service: ServiceKey }) {
   const icons: Record<ServiceKey, string> = {
-    identity: "🪪",
-    kyc: "🔒",
-    credentials: "📜",
-    dao: "🏛️",
-    reputation: "⭐",
-    employment: "💼",
-    education: "🎓",
-    social: "💬",
-    custom: "🔧",
-    zkPassport: "🔐",
+    identity: "ID",
+    kyc: "KYC",
+    credentials: "CR",
+    dao: "DAO",
+    reputation: "RP",
+    employment: "EM",
+    education: "ED",
+    social: "SC",
+    custom: "CU",
+    zkPassport: "ZK",
   };
-  return <span aria-hidden="true" style={{ fontSize: "0.85rem" }}>{icons[service] ?? "📄"}</span>;
+  return (
+    <span
+      aria-hidden="true"
+      className="mono t-xs"
+      style={{
+        fontSize: "0.6rem",
+        fontWeight: 700,
+        color: "var(--color-subtle)",
+        background: "var(--color-surface-1)",
+        padding: "2px 4px",
+        borderRadius: 3,
+      }}
+    >
+      {icons[service] ?? "??"}
+    </span>
+  );
 }
 
 function ScoreEntry({ onNavigate }: { onNavigate: (address: string) => void }) {
