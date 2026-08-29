@@ -84,7 +84,7 @@ contract IdentityGateTest is Test {
         bytes32 claimId = _issue();
         assertTrue(gate.isIdentityLinked(subject));
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         assertFalse(gate.isIdentityLinked(subject));
