@@ -18,3 +18,7 @@ lcov.info
 .indexer-state.json
 .app-state.json
 recovery/
+
+# Documentation (untracked)
+*.md
+!README.md
