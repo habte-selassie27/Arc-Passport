@@ -108,7 +108,22 @@ contract AttestationRegistry is
     }
 
     /// @inheritdoc IAttestationRegistry
-    function revoke(bytes32 claimId) external onlyRole(REVOKER_ROLE) nonReentrant whenNotPaused {
+    function revoke(bytes32 claimId) external nonReentrant whenNotPaused {
+        Claim storage c = _claims[claimId];
+        if (c.claimId == bytes32(0)) revert ArcPass__ClaimNotFound(claimId);
+        if (c.revoked) revert ArcPass__ClaimAlreadyRevoked(claimId);
+        if (c.issuer != msg.sender) revert ArcPass__NotIssuer(c.issuer);
+
+        c.revoked = true;
+        c.revokedAt = block.timestamp;
+
+        emit ClaimRevoked(claimId, msg.sender, block.timestamp);
+    }
+
+    /// @notice Emergency revocation by admin multisig (REVOKER_ROLE).
+    /// @dev    Restricted to REVOKER_ROLE which should be held only by the multisig.
+    ///         Allows revocation of compromised/fraudulent claims regardless of issuer.
+    function adminRevoke(bytes32 claimId) external onlyRole(REVOKER_ROLE) nonReentrant whenNotPaused {
         Claim storage c = _claims[claimId];
         if (c.claimId == bytes32(0)) revert ArcPass__ClaimNotFound(claimId);
         if (c.revoked) revert ArcPass__ClaimAlreadyRevoked(claimId);
