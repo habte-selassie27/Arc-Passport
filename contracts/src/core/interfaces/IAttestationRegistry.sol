@@ -54,9 +54,13 @@ interface IAttestationRegistry {
         bytes32   refUID
     ) external returns (bytes32 claimId);
 
-    /// @notice Revoke a previously issued claim. Only callable by REVOKER_ROLE.
+    /// @notice Revoke a previously issued claim. Only callable by the issuer who created it.
     /// @param  claimId  The claim to revoke.
     function revoke(bytes32 claimId) external;
+
+    /// @notice Emergency revocation by admin (REVOKER_ROLE, multisig only).
+    /// @param  claimId  The claim to revoke.
+    function adminRevoke(bytes32 claimId) external;
 
     /// @notice Get the full Claim struct for a given claimId.
     function getClaim(bytes32 claimId) external view returns (Claim memory);
