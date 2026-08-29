@@ -123,7 +123,7 @@ contract BatchAttestationTest is Test {
         vm.prank(issuer);
         bytes32 c1 = registry.attest(subA, schemaId, DATA, 0);
 
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(c1);
 
         AttestationInput[] memory inputs = new AttestationInput[](1);
