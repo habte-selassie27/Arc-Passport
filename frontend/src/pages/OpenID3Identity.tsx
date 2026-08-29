@@ -14,13 +14,13 @@ import { Callout } from "../components/ui/Callout";
 import { PageHeader } from "../components/ui/PageHeader";
 import { AddressDisplay } from "../components/ui/AddressDisplay";
 
-type Phase = "idle" | "selecting" | "starting" | "awaiting" | "verifying" | "done" | "failed";
+type Phase = "idle" | "selecting" | "redirecting" | "authenticating" | "verifying" | "done" | "failed";
 
 function Progress({ phase }: { phase: Phase }) {
   const steps = [
     { key: "selecting", label: "Select Provider" },
-    { key: "starting", label: "Initialize OAuth" },
-    { key: "awaiting", label: "Authenticate with Provider" },
+    { key: "redirecting", label: "OAuth Redirect" },
+    { key: "authenticating", label: "Authenticate" },
     { key: "verifying", label: "Verify & Attest" },
     { key: "done", label: "Identity Linked" },
   ];
@@ -39,7 +39,7 @@ function Progress({ phase }: { phase: Phase }) {
 
 export function OpenID3IdentityPage() {
   const { isConnected } = useAccount();
-  const { address, start, poll, complete } = useOpenID3Flow();
+  const { address, start, poll, verifyWithDAuth } = useOpenID3Flow();
   const { data: status } = useOpenID3Status(address);
   const { data: config } = useOpenID3Config();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -57,22 +57,40 @@ export function OpenID3IdentityPage() {
     }
   };
 
-  // Handle OAuth callback
+  // Handle OAuth callback — redirect comes back with ?code=...&state=...
   useEffect(() => {
     const code = searchParams.get("code");
     const state = searchParams.get("state");
+    const providerError = searchParams.get("error");
+
+    if (providerError) {
+      setError(`OAuth provider returned error: ${providerError}`);
+      setPhase("failed");
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
     if (code && state && address) {
       const linkId = state.split(":")[0];
+      const providerId = selectedProvider || state.split(":")[2] || "github";
       setPhase("verifying");
-      complete.mutateAsync({ code, linkId })
-        .then(() => { setPhase("done"); setSearchParams({}, { replace: true }); })
-        .catch((err) => { setError(err.message); setPhase("failed"); setSearchParams({}, { replace: true }); });
-    }
-  }, []);
 
-  // Poll for completion
+      verifyWithDAuth.mutateAsync({ code, linkId, providerId })
+        .then(() => {
+          setPhase("done");
+          setSearchParams({}, { replace: true });
+        })
+        .catch((err) => {
+          setError(err.message);
+          setPhase("failed");
+          setSearchParams({}, { replace: true });
+        });
+    }
+  }, [searchParams, address]);
+
+  // Poll for completion (for flows that don't use direct redirect)
   useEffect(() => {
-    if (phase === "awaiting" && startData?.linkId) {
+    if (phase === "authenticating" && startData?.linkId) {
       stopPolling();
       pollRef.current = window.setInterval(async () => {
         try {
@@ -113,14 +131,13 @@ export function OpenID3IdentityPage() {
 
   const handleSelectProvider = async (providerId: string) => {
     setSelectedProvider(providerId);
-    setPhase("starting");
+    setPhase("redirecting");
     setError(null);
     try {
       const result = await start.mutateAsync(providerId);
       setStartData(result);
-      setPhase("awaiting");
-      // Open OAuth in new tab
-      window.open(result.authUrl, "_blank", "noopener,noreferrer");
+      // Redirect in same tab (not new tab) — cleaner OAuth flow
+      window.location.href = result.authUrl;
     } catch (err) {
       setError((err as Error).message);
       setPhase("failed");
@@ -137,9 +154,9 @@ export function OpenID3IdentityPage() {
   return (
     <div className="page-container">
       <PageHeader
-        eyebrow="OpenID3 · Web2 Identity Linking"
-        title="Link Web2 Identity"
-        description="Connect your Web2 accounts (GitHub, X, Discord, Email) to your ArcPass wallet. Prove account ownership with OAuth-based decentralized authentication."
+        eyebrow="Web Accounts · Identity Linking"
+        title="Link Web Accounts"
+        description="Connect your Web2 accounts (GitHub, X, Discord) to your ArcPass wallet. Prove account ownership with DAuth decentralized authentication."
       />
 
       {phase !== "idle" && phase !== "selecting" && (
@@ -158,33 +175,48 @@ export function OpenID3IdentityPage() {
         <Card>
           <h3 className="text-lg font-semibold mb-4">Select a Provider</h3>
           <p className="text-sm text-gray-500 mb-4">
-            Choose which Web2 identity you want to link to your wallet. You'll authenticate directly with the provider.
+            Choose which Web2 identity you want to link to your wallet.
+            Authentication is handled by DAuth Network for privacy-preserving verification.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {config.providers.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => handleSelectProvider(p.id)}
-                className="web2-proof-template-card"
-              >
-                <div className="font-medium">{p.name}</div>
-                <div className="text-sm text-gray-500">{p.description}</div>
-              </button>
-            ))}
-          </div>
+          {config.providers.every((p: any) => !p.configured) ? (
+            <Callout type="warn">
+              No OAuth providers are configured. Set{" "}
+              <code>OPENID3_GITHUB_CLIENT_ID</code>,{" "}
+              <code>OPENID3_TWITTER_CLIENT_ID</code>, or{" "}
+              <code>OPENID3_DISCORD_CLIENT_ID</code>{" "}
+              in your backend <code>.env</code> to enable identity linking.
+            </Callout>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {config.providers.map((p: any) => (
+                <button
+                  key={p.id}
+                  onClick={() => handleSelectProvider(p.id)}
+                  className="web2-proof-template-card"
+                  disabled={!p.configured}
+                  style={{ opacity: p.configured ? 1 : 0.4 }}
+                >
+                  <div className="font-medium">{p.name}</div>
+                  <div className="text-sm text-gray-500">
+                    {p.configured ? p.description : "Not configured"}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
-      {phase === "starting" && (
+      {phase === "redirecting" && (
         <Card>
           <div className="flex items-center gap-3">
             <Spinner />
-            <span>Initializing OAuth session...</span>
+            <span>Redirecting to authentication provider...</span>
           </div>
         </Card>
       )}
 
-      {phase === "awaiting" && (
+      {phase === "authenticating" && (
         <Card>
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -192,8 +224,8 @@ export function OpenID3IdentityPage() {
               <span>Waiting for provider authentication...</span>
             </div>
             <Callout>
-              A new tab has opened with the authentication provider. Complete the login there, then return here.
-              This page will automatically detect when verification is complete.
+              Complete the login with the provider. This page will automatically
+              detect when verification is complete.
             </Callout>
           </div>
         </Card>
@@ -201,9 +233,15 @@ export function OpenID3IdentityPage() {
 
       {phase === "verifying" && (
         <Card>
-          <div className="flex items-center gap-3">
-            <Spinner />
-            <span>Verifying identity and issuing on-chain attestation...</span>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Spinner />
+              <span>Verifying via DAuth Network...</span>
+            </div>
+            <Callout>
+              DAuth is generating a zero-knowledge proof of your authentication.
+              Your identity remains private — only the proof is shared.
+            </Callout>
           </div>
         </Card>
       )}
@@ -216,7 +254,7 @@ export function OpenID3IdentityPage() {
               <span className="font-semibold">Identity Linked</span>
             </div>
             <p className="text-sm text-gray-500">
-              Your Web2 identity has been verified and linked to your wallet on-chain.
+              Your Web2 identity has been verified via DAuth Network and linked to your wallet on-chain.
             </p>
             {status?.provider && (
               <div className="text-sm">
