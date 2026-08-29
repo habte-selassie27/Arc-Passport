@@ -5,13 +5,11 @@ import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 
 /**
- * Notifications card — shows the connected wallet's notifications with an
- * unread badge and mark-read actions. Lightweight UI over the store-backed
- * /v1/notifications API (ATTESTATIONS.md §20).
+ * Notifications card — auto-fetches notifications for the given address.
+ * No wallet connection required for loading; mark-read still requires auth.
  */
 export function NotificationsCard({ address }: { address: `0x${string}` }) {
   const { notifications, unread, isLoading, error, load, markRead, markAllRead } = useNotifications(address);
-  const loaded = notifications.length > 0 || error || isLoading;
 
   return (
     <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -32,20 +30,12 @@ export function NotificationsCard({ address }: { address: `0x${string}` }) {
             </span>
           )}
         </h2>
-        {loaded && unread > 0 && (
+        {unread > 0 && (
           <button type="button" className="btn btn--link btn--sm" onClick={() => void markAllRead()}>
             Mark all read
           </button>
         )}
       </div>
-
-      {!loaded && (
-        <div style={{ padding: "var(--space-5)", textAlign: "center" }}>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => void load()}>
-            Load notifications
-          </button>
-        </div>
-      )}
 
       {isLoading && notifications.length === 0 && (
         <div className="flex items-center justify-center gap-2 c-muted t-sm" style={{ padding: "var(--space-6)" }}>
@@ -64,7 +54,7 @@ export function NotificationsCard({ address }: { address: `0x${string}` }) {
         </div>
       )}
 
-      {!isLoading && !error && notifications.length === 0 && loaded && (
+      {!isLoading && !error && notifications.length === 0 && (
         <EmptyState
           title="No notifications yet"
           body="You'll be notified when credentials are issued to your address."
