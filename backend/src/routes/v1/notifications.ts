@@ -9,19 +9,28 @@ import {
 
 const router = Router();
 
-/** GET /v1/notifications — the verified address's notifications, newest first. */
-router.get("/", requireSignedNonce, (_req: Request, res: Response) => {
-  const address = _req.verifiedAddress!;
+/** GET /v1/notifications/:address — public endpoint, no auth needed. */
+router.get("/:address", (req: Request, res: Response) => {
+  const address = req.params.address as `0x${string}`;
+  if (!address || !address.startsWith("0x") || address.length !== 42) {
+    res.status(400).json({ success: false, error: { code: "INVALID_ADDRESS", message: "Invalid address" } });
+    return;
+  }
   const notifications = getNotifications(address);
   res.json({ success: true, data: { notifications } });
 });
 
-/** GET /v1/notifications/unread-count — cheap badge count for the UI. */
-router.get("/unread-count", requireSignedNonce, (_req: Request, res: Response) => {
-  res.json({ success: true, data: { unread: getUnreadCount(_req.verifiedAddress!) } });
+/** GET /v1/notifications/:address/unread-count — cheap badge count. */
+router.get("/:address/unread-count", (req: Request, res: Response) => {
+  const address = req.params.address as `0x${string}`;
+  if (!address || !address.startsWith("0x") || address.length !== 42) {
+    res.status(400).json({ success: false, error: { code: "INVALID_ADDRESS", message: "Invalid address" } });
+    return;
+  }
+  res.json({ success: true, data: { unread: getUnreadCount(address) } });
 });
 
-/** POST /v1/notifications/read — mark one ({ id }) or all ({ all: true }) as read. */
+/** POST /v1/notifications/read — requires wallet signature (mutates state). */
 router.post("/read", requireSignedNonce, (req: Request, res: Response) => {
   const { id, all } = req.body as { id?: string; all?: boolean };
   const address = req.verifiedAddress!;
