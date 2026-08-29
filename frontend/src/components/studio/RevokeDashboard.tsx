@@ -66,7 +66,7 @@ export function RevokeDashboard() {
     <Card>
       <h3 className="display--medium t-lg" style={{ marginBottom: "var(--space-2)" }}>Revoke Manager</h3>
       <p className="t-sm c-muted" style={{ marginBottom: "var(--space-4)" }}>
-        Enter a claim ID to look up its details and revoke it. You must hold REVOKER_ROLE on the AttestationRegistry.
+        Enter a claim ID to look up its details and revoke it. Only the issuer who created this claim can revoke it (admin multisig can use adminRevoke for emergencies).
       </p>
 
       <div className="flex gap-2">
