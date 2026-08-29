@@ -88,7 +88,7 @@ contract ServiceGatesTest is Test {
     function test_KycGate_returnsFalse_whenRevoked() public {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, KYC_BASIC_ID, keccak256("kycData"), 0);
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         assertFalse(kycGate.isKycVerified(subject, 1));
@@ -137,7 +137,7 @@ contract ServiceGatesTest is Test {
     function test_DaoGate_returnsFalse_afterRevoke() public {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, DAO_MEMBERSHIP_ID, keccak256("daoData"), 0);
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         assertFalse(daoGate.isMember(subject));
