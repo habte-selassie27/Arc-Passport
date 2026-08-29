@@ -61,7 +61,7 @@ function getOAuthConfig(): Record<OpenID3ProviderId, ProviderOAuthConfig> {
       clientSecret: process.env.OPENID3_TWITTER_CLIENT_SECRET || "",
       authorizeUrl: "https://twitter.com/i/oauth2/authorize",
       tokenUrl: "https://api.twitter.com/2/oauth2/token",
-      scope: "users.read email.read",
+      scope: "users.read",
       requiresPkce: true,
       extraParams: { response_type: "code" },
     },
