@@ -6,6 +6,7 @@ import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
 import { SCORE_REGISTRY_ABI } from "../abis/ScoreRegistry.js";
 import { fetchFromIpfs } from "./ipfsService.js";
 import { getClaimsBySubject } from "../indexer/claimIndexer.js";
+import { getRegistrationHistory } from "./identityService.js";
 import { type ServiceKey } from "./attestation/index.js";
 import { ALL_SCHEMAS } from "../constants/schemas.js";
 import { Errors } from "../utils/errors.js";
@@ -22,16 +23,18 @@ export interface ServiceClaims {
 }
 
 export interface PassportDocument {
-  address:      string;
-  identityId:   number;
-  metadataUri:  string | null;
-  metadata:     IdentityMetadata | null;
-  reputation:   ReputationEvent[];
-  claims:       ActiveClaim[];
-  services:     Record<ServiceKey, ServiceClaims>;
-  trustScore:   TrustScore;
-  onChainScore: OnChainScore | null;
-  generatedAt:  number;
+  address:       string;
+  identityId:    number;
+  metadataUri:   string | null;
+  metadata:      IdentityMetadata | null;
+  reputation:    ReputationEvent[];
+  claims:        ActiveClaim[];
+  services:      Record<ServiceKey, ServiceClaims>;
+  trustScore:    TrustScore;
+  onChainScore:  OnChainScore | null;
+  generatedAt:   number;
+  /** True when balanceOf > 0 but the identity scan couldn't find the mint event. */
+  scanIncomplete: boolean;
 }
 
 export interface OnChainScore {
@@ -70,18 +73,6 @@ function buildSchemaServiceMap(): Map<string, ServiceKey> {
 
 const SCHEMA_SERVICE_MAP = buildSchemaServiceMap();
 
-const ERC721_TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-
-const TransferEventAbi = {
-  type: "event",
-  name: "Transfer",
-  inputs: [
-    { name: "from", type: "address", indexed: true },
-    { name: "to", type: "address", indexed: true },
-    { name: "tokenId", type: "uint256", indexed: true },
-  ],
-} as const;
-
 const ERC721_ABI = [
   { name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
   { name: "ownerOf", type: "function", stateMutability: "view", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] },
@@ -89,35 +80,27 @@ const ERC721_ABI = [
 ] as const;
 
 // Cache known address→tokenId mappings (identity lookups are expensive on Arc's non-standard ERC-721)
-const identityCache = new Map<string, { tokenId: number; metadataUri: string | null }>();
-const MAX_IDENTITY_CACHE = 1000;
+const identityCache = new Map<string, { tokenId: number; metadataUri: string | null } | null>();
+const MAX_IDENTITY_CACHE = 500;
 
-async function getIdentity(address: `0x${string}`): Promise<{ tokenId: number; metadataUri: string | null } | null> {
+async function getIdentityWithFlag(address: `0x${string}`): Promise<{ tokenId: number; metadataUri: string | null; scanIncomplete: boolean }> {
   const cached = identityCache.get(address.toLowerCase());
-  if (cached) return cached;
-
-  // Fallback: try getIdentity (standard ERC-8004)
-  try {
-    const result = await publicClient.readContract({
-      address: ADDRESSES.identityRegistry,
-      abi: IDENTITY_REGISTRY_ABI,
-      functionName: "getIdentity",
-      args: [address],
-    });
-    const [tokenId, metadataUri] = result as readonly [bigint, string];
-    const out = { tokenId: Number(tokenId), metadataUri: metadataUri ?? null };
-    identityCache.set(address.toLowerCase(), out);
-    if (identityCache.size > MAX_IDENTITY_CACHE) {
-      const firstKey = identityCache.keys().next().value;
-      if (firstKey) identityCache.delete(firstKey);
-    }
-    return out;
-  } catch {
-    // getIdentity reverts on Arc's implementation (calls owner as contract)
+  if (cached !== undefined) {
+    if (cached === null) return { tokenId: 0, metadataUri: null, scanIncomplete: true };
+    return { ...cached, scanIncomplete: false };
   }
 
-  // Unknown address with no cached identity — return null (no on-chain identity found)
-  return null;
+  const history = await getRegistrationHistory(address);
+  const identity = history.identity;
+  const scanIncomplete = identity === null && history.balance > 0;
+
+  identityCache.set(address.toLowerCase(), identity);
+  if (identityCache.size > MAX_IDENTITY_CACHE) {
+    const firstKey = identityCache.keys().next().value;
+    if (firstKey) identityCache.delete(firstKey);
+  }
+
+  return { tokenId: identity?.tokenId ?? 0, metadataUri: identity?.metadataUri ?? null, scanIncomplete };
 }
 
 async function getReputationEvents(tokenId: number): Promise<ReputationEvent[]> {
@@ -190,8 +173,11 @@ async function batchValidateClaims(claims: ActiveClaim[]): Promise<ActiveClaim[]
       const r = results[i];
       return { ...c, valid: r.status === "success" && r.result === true };
     });
-  } catch {
-    return claims;
+  } catch (err) {
+    // Validation unavailable (RPC throttling) — mark as failed rather than
+    // silently treating all claims as revoked.
+    console.error("[passport] batch validate failed:", (err as Error).message);
+    return claims.map((c) => ({ ...c, valid: false, validationFailed: true }));
   }
 }
 
@@ -199,15 +185,24 @@ export async function getPassport(address: `0x${string}`): Promise<PassportDocum
   const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
     Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms))]);
 
-  const identity = await withTimeout(getIdentity(address), 8000, "getIdentity");
+  const identityResult = await withTimeout(
+    getIdentityWithFlag(address),
+    15000,
+    "getIdentity"
+  ).catch((err) => {
+    console.warn("[passport] identity resolution skipped:", (err as Error).message);
+    return { tokenId: 0, metadataUri: null, scanIncomplete: true };
+  });
+
+  const { scanIncomplete } = identityResult;
 
   let reputation: ReputationEvent[] = [];
   let metadata: IdentityMetadata | null = null;
-  if (identity) {
-    reputation = await withTimeout(getReputationEvents(identity.tokenId), 8000, "getReputation");
-    if (identity.metadataUri) {
+  if (identityResult.tokenId > 0) {
+    reputation = await withTimeout(getReputationEvents(identityResult.tokenId), 8000, "getReputation");
+    if (identityResult.metadataUri) {
       try {
-        const raw = await withTimeout(fetchFromIpfs(identity.metadataUri) as Promise<unknown>, 8000, "fetchIpfs");
+        const raw = await withTimeout(fetchFromIpfs(identityResult.metadataUri) as Promise<unknown>, 8000, "fetchIpfs");
         metadata = (raw && typeof raw === "object" ? raw : null) as IdentityMetadata | null;
       } catch {
         metadata = null;
@@ -220,9 +215,9 @@ export async function getPassport(address: `0x${string}`): Promise<PassportDocum
     claimId:  c.claimId,
     schemaId: c.schemaId,
     issuer:   c.issuer,
-    valid:    true,
+    valid:    false,
   }));
-  const claims = await withTimeout(batchValidateClaims(rawClaims), 8000, "batchValidate");
+  const claims = await withTimeout(batchValidateClaims(rawClaims), 15000, "batchValidate");
 
   const services = buildServicesFromIndexedClaims(address, claims);
 
@@ -260,8 +255,8 @@ export async function getPassport(address: `0x${string}`): Promise<PassportDocum
 
   return {
     address:      address,
-    identityId:   identity?.tokenId ?? 0,
-    metadataUri:  identity?.metadataUri ?? null,
+    identityId:   identityResult.tokenId,
+    metadataUri:  identityResult.metadataUri,
     metadata,
     reputation,
     claims,
@@ -269,6 +264,7 @@ export async function getPassport(address: `0x${string}`): Promise<PassportDocum
     trustScore,
     onChainScore,
     generatedAt:  Date.now(),
+    scanIncomplete,
   };
 }
 
