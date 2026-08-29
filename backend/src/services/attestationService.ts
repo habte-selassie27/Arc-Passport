@@ -38,6 +38,21 @@ export async function revokeClaim(claimId: string): Promise<`0x${string}`> {
   return txHash as `0x${string}`;
 }
 
+export async function adminRevokeClaim(claimId: string): Promise<`0x${string}`> {
+  const walletId = process.env.CIRCLE_ISSUER_WALLET_ID;
+  if (!walletId) throw new Error("CIRCLE_ISSUER_WALLET_ID not configured");
+  if (!ADDRESSES.attestationRegistry) throw new Error("ATTESTATION_REGISTRY_ADDRESS not configured");
+
+  const txHash = await executeContractCall(
+    walletId,
+    ADDRESSES.attestationRegistry,
+    "adminRevoke(bytes32)",
+    [claimId]
+  );
+
+  return txHash as `0x${string}`;
+}
+
 export async function getClaim(claimId: `0x${string}`) {
   if (!ADDRESSES.attestationRegistry) throw new Error("ATTESTATION_REGISTRY_ADDRESS not configured");
 
