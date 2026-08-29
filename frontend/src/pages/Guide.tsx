@@ -190,18 +190,26 @@ export function GuidePage() {
           </Callout>
         </Step>
 
-        <Step number="07" title="Get verified (find an issuer)">
+        <Step number="07" title="Explore credentials">
           <p style={bodyStyle}>
-            An <strong style={strongStyle}>issuer</strong> is someone who can attach a credential to
-            your passport — like a KYC provider verifying your identity or an employer confirming
-            your job title.
+            Explore the credential types supported by ArcPassport and see how different issuers can
+            verify users for KYC, employment, education, reputation, governance, and other use cases.
           </p>
           <p style={bodyStyle}>
-            On the testnet, you can try the verification flow by checking existing passports. To
-            issue credentials yourself, you need <strong style={strongStyle}>ISSUER_ROLE</strong> —
-            contact the project admin to become an issuer.
+            Your passport can receive credentials from authorized issuers, such as KYC providers,
+            employers, DAOs, or educational institutions. Only authorized issuers can issue
+            credentials — this prevents users from creating their own trusted credentials.
           </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)" }}>
+          <p style={bodyStyle}>
+            The credential flow works like this:
+          </p>
+          <CodeBlock style={{ marginTop: "var(--space-2)" }}>
+            <span className="t-comment">{"// Credential lifecycle"}</span>{"\n"}
+            <span className="t-key">User</span>{" -> Register Identity -> Passport"}{"\n"}
+            <span className="t-key">Issuer</span>{" -> Verifies user -> Issues credential"}{"\n"}
+            <span className="t-key">Credential</span>{" -> Appears on passport -> Anyone can verify"}
+          </CodeBlock>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", marginTop: "var(--space-3)" }}>
             <Link to="/services/kyc" className="btn btn--ghost btn--sm">
               Check KYC status
             </Link>
@@ -212,14 +220,34 @@ export function GuidePage() {
               Check reputation
             </Link>
           </div>
+          <Callout type="tip">
+            <strong style={strongStyle}>Authorized issuers only.</strong> Only issuers with{" "}
+            <code className="mono" style={{ fontSize: "var(--text-xs)", color: "var(--color-muted)" }}>
+              ISSUER_ROLE
+            </code>{" "}
+            can issue credentials. This ensures every credential on your passport is backed by a
+            trusted entity.
+          </Callout>
         </Step>
 
-        <Step number="08" title="Verify someone else's credential">
+        <Step number="08" title="Verify a Credential">
           <p style={bodyStyle}>
-            If you run a dApp or service, you can verify that a user holds a valid credential
-            before granting them access.
+            You can verify another user's onchain identity and credentials before giving them access
+            to your dApp or service. Instead of a user saying "Trust me, I'm KYC verified," your
+            dApp asks the ArcPassport contract directly.
           </p>
-          <ol style={{ ...bodyStyle, paddingLeft: "var(--space-5)", listStyle: "decimal" }}>
+          <p style={bodyStyle}>
+            Enter a wallet address to view its passport and available credentials. Select a
+            credential and click <strong style={strongStyle}>Verify Credential</strong> to check its
+            validity, issuer, and expiration status.
+          </p>
+          <CodeBlock style={{ marginTop: "var(--space-2)" }}>
+            <span className="t-comment">{"// What happens when you verify"}</span>{"\n"}
+            <span className="t-key">dApp</span>{" -> Asks contract: Is KYC Basic valid for 0xABC?"}{"\n"}
+            <span className="t-key">Contract</span>{" -> Checks onchain attestation"}{"\n"}
+            <span className="t-key">Result</span>{" -> VALID | Issuer: 0x123 | Expires: Aug 2027"}
+          </CodeBlock>
+          <ol style={{ ...bodyStyle, paddingLeft: "var(--space-5)", listStyle: "decimal", marginTop: "var(--space-3)" }}>
             <li>Click <strong style={strongStyle}>Verify</strong> in the navigation.</li>
             <li>
               Enter the user's wallet address and pick the credential type (e.g., "KYC Basic") from
@@ -230,9 +258,17 @@ export function GuidePage() {
               whether the credential is valid, who issued it, and when it expires.
             </li>
           </ol>
-          <Callout type="warn">
-            <strong style={strongStyle}>Always verify on-chain.</strong> Never trust a credential
-            claim without calling the verify function — checking is free and instant.
+          <Callout type="tip">
+            <strong style={strongStyle}>Verification happens on-chain.</strong> Your application
+            doesn't need to trust a user's claim — the ArcPassport contract checks the blockchain
+            directly. Verification is free and instant.
+          </Callout>
+          <Callout type="info">
+            <strong style={strongStyle}>Two actors, one flow.</strong> An{" "}
+            <strong style={strongStyle}>issuer</strong> verifies a user and gives them a credential.
+            A{" "}
+            <strong style={strongStyle}>verifier / dApp</strong> checks that credential and decides
+            whether to grant access.
           </Callout>
         </Step>
 
