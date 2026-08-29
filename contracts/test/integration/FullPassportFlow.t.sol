@@ -75,7 +75,7 @@ contract FullPassportFlowTest is Test {
         assertFalse(expirationChecker.isExpired(claimId));
 
         // 5. Revoke
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         // 6. Verify invalid
@@ -166,7 +166,7 @@ contract FullPassportFlowTest is Test {
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
 
         // Revoke first so second issuance is allowed
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         AttestationRegistry v2 = new AttestationRegistry();
