@@ -1,0 +1,8 @@
+
+# Runtime data
+.claim-payloads.json
+.openid3-links.jsonl
+.eas-index.json
+.liveness-verifications.jsonl
+.photo-hashes.jsonl
+.score-history.jsonl
