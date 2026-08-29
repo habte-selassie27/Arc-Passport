@@ -85,6 +85,13 @@ export const ATTESTATION_REGISTRY_ABI = [
   },
   {
     type: "function",
+    name: "adminRevoke",
+    inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "getClaim",
     inputs: [{ name: "claimId", type: "bytes32", internalType: "bytes32" }],
     outputs: [

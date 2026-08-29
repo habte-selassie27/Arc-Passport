@@ -53,6 +53,24 @@ export const SCORE_REGISTRY_ABI = [
     ],
     stateMutability: "view",
   },
+  // AccessControl (inherited from AccessControlUpgradeable)
+  {
+    type: "function",
+    name: "SCORE_WRITER_ROLE",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "hasRole",
+    inputs: [
+      { name: "role", type: "bytes32", internalType: "bytes32" },
+      { name: "account", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "view",
+  },
   {
     type: "event",
     name: "ScoreCommitted",

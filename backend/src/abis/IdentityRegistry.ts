@@ -1,3 +1,8 @@
+/**
+ * Arc IdentityRegistry predeploy — verified against the live contract.
+ * Plain ERC-721: register() mints, tokenURI(tokenId) → profile metadata.
+ * NOTE: there is no getIdentity() and no enumeration on the real contract.
+ */
 export const IDENTITY_REGISTRY_ABI = [
   {
     type: "function",
@@ -8,12 +13,9 @@ export const IDENTITY_REGISTRY_ABI = [
   },
   {
     type: "function",
-    name: "getIdentity",
+    name: "balanceOf",
     inputs: [{ name: "owner", type: "address", internalType: "address" }],
-    outputs: [
-      { name: "tokenId", type: "uint256", internalType: "uint256" },
-      { name: "metadataURI", type: "string", internalType: "string" },
-    ],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
   },
   {
@@ -21,6 +23,13 @@ export const IDENTITY_REGISTRY_ABI = [
     name: "ownerOf",
     inputs: [{ name: "tokenId", type: "uint256", internalType: "uint256" }],
     outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "tokenURI",
+    inputs: [{ name: "tokenId", type: "uint256", internalType: "uint256" }],
+    outputs: [{ name: "", type: "string", internalType: "string" }],
     stateMutability: "view",
   },
 ] as const;

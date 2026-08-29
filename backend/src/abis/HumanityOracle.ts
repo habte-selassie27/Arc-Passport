@@ -1,0 +1,102 @@
+export const HUMANITY_ORACLE_ABI = [
+  {
+    type: "function",
+    name: "requestVerification",
+    inputs: [
+      { name: "user", type: "address" },
+      { name: "callbackContract", type: "address" },
+      { name: "maxAge", type: "uint256" },
+    ],
+    outputs: [{ name: "requestId", type: "bytes32" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "submitVerificationResult",
+    inputs: [
+      { name: "requestId", type: "bytes32" },
+      { name: "isHuman", type: "bool" },
+      { name: "nullifier", type: "bytes32" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "isUserHuman",
+    inputs: [{ name: "user", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getRequest",
+    inputs: [{ name: "requestId", type: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "requestId", type: "bytes32" },
+          { name: "requester", type: "address" },
+          { name: "user", type: "address" },
+          { name: "callbackContract", type: "address" },
+          { name: "createdAt", type: "uint256" },
+          { name: "expiresAt", type: "uint256" },
+          { name: "status", type: "uint8" },
+          { name: "isHuman", type: "bool" },
+          { name: "attestationUID", type: "bytes32" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getUserNullifier",
+    inputs: [{ name: "user", type: "address" }],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isProvider",
+    inputs: [{ name: "addr", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "walletToNullifier",
+    inputs: [{ name: "wallet", type: "address" }],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "nullifierToWallet",
+    inputs: [{ name: "nullifier", type: "bytes32" }],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "VerificationRequested",
+    inputs: [
+      { name: "requestId", type: "bytes32", indexed: true },
+      { name: "requester", type: "address", indexed: true },
+      { name: "user", type: "address", indexed: true },
+      { name: "expiresAt", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "VerificationCompleted",
+    inputs: [
+      { name: "requestId", type: "bytes32", indexed: true },
+      { name: "user", type: "address", indexed: true },
+      { name: "isHuman", type: "bool", indexed: false },
+      { name: "attestationUID", type: "bytes32", indexed: false },
+    ],
+  },
+] as const;
