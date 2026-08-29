@@ -91,7 +91,7 @@ contract EASIntegrationTest is Test {
         bytes32 baseClaimId = registry.attest(subject, schemaId, DATA, 0);
 
         // Revoke the base
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(baseClaimId);
 
         // Try to reference revoked claim
@@ -126,7 +126,7 @@ contract EASIntegrationTest is Test {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
 
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         Claim memory c = registry.getClaim(claimId);
@@ -141,7 +141,7 @@ contract EASIntegrationTest is Test {
         Claim memory before = registry.getClaim(claimId);
         assertEq(before.revokedAt, 0);
 
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         Claim memory after_ = registry.getClaim(claimId);
@@ -225,7 +225,7 @@ contract EASIntegrationTest is Test {
         assertTrue(registry.isValid(repClaim));
 
         // Revoke KYC — employment and reputation should still be individually valid
-        vm.prank(multisig);
+        vm.prank(issuer);
         registry.revoke(kycClaim);
 
         assertFalse(registry.isValid(kycClaim));
