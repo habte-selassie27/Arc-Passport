@@ -35,12 +35,14 @@ const eventBuckets: Record<string, number[]> = {
   UnBlocklisted: [],
 };
 
-export function startGasPricePolling(intervalMs = 30_000) {
+export function startGasPricePolling(intervalMs = 60_000) {
   if (gasPricePollInterval) clearInterval(gasPricePollInterval);
+  let gasErrorCount = 0;
 
   const poll = async () => {
     try {
       const price = await publicClient.getGasPrice();
+      gasErrorCount = 0;
       lastGasPriceWei = price;
       const usdcGwei = Number(formatUnits(price, 9));
       console.debug(`[gas] ${usdcGwei.toFixed(2)} Gwei (${Number(formatUnits(price, 18)).toFixed(6)} USDC)`);
@@ -52,7 +54,12 @@ export function startGasPricePolling(intervalMs = 30_000) {
         console.warn(`[ALERT] Gas price spike: ${usdcGwei.toFixed(2)} Gwei`);
       }
     } catch (err) {
-      console.error("[gas] Failed to fetch gas price:", (err as Error).message);
+      gasErrorCount++;
+      if (gasErrorCount <= 3) {
+        console.error("[gas] Failed to fetch gas price:", (err as Error).message);
+      } else if (gasErrorCount === 4) {
+        console.warn("[gas] RPC rate-limiting gas price polls — suppressing further errors until recovery");
+      }
     }
   };
 
@@ -134,9 +141,11 @@ export function startBalancePolling(intervalMs = 300_000) {
     return;
   }
 
+  let balanceErrorCount = 0;
   const poll = async () => {
     try {
       const rawBalance = await getWalletBalance(walletId);
+      balanceErrorCount = 0;
       // Circle returns the amount in the token's smallest unit. For USDC (6 decimals),
       // parseUnits converts the raw amount to a human-readable USDC value.
       const balance = Number(formatUnits(BigInt(rawBalance), 6));
@@ -149,7 +158,10 @@ export function startBalancePolling(intervalMs = 300_000) {
         );
       }
     } catch (err) {
-      console.error("[balance] Failed to fetch wallet balance:", (err as Error).message);
+      balanceErrorCount++;
+      if (balanceErrorCount <= 3) {
+        console.error("[balance] Failed to fetch wallet balance:", (err as Error).message);
+      }
     }
   };
 
@@ -190,6 +202,7 @@ export function startEventWatchers() {
       address: ADDRESSES.attestationRegistry,
       abi: ATTESTATION_REGISTRY_ABI,
       eventName: "RoleGranted",
+      pollingInterval: 15_000,
       onLogs: (logs) => {
         for (const log of logs) {
           processEvent({
@@ -200,6 +213,7 @@ export function startEventWatchers() {
           });
         }
       },
+      onError: () => {},
     });
   }
 
@@ -208,6 +222,7 @@ export function startEventWatchers() {
       address: ADDRESSES.schemaRegistry,
       abi: SCHEMA_REGISTRY_ABI,
       eventName: "SchemaRegistered",
+      pollingInterval: 15_000,
       onLogs: (logs) => {
         for (const log of logs) {
           processEvent({
@@ -218,6 +233,7 @@ export function startEventWatchers() {
           });
         }
       },
+      onError: () => {},
     });
   }
 }
