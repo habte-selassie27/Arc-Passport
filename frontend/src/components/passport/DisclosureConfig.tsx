@@ -1,14 +1,13 @@
 /**
- * DisclosureConfig — Selective disclosure settings.
- * Shows all claims and their field classifications (PUBLIC/PRIVATE/DERIVED).
- * Allows the user to see what's visible on their public passport.
+ * PrivacyAndData — one combined section: credential field privacy
+ * (selective disclosure) + GDPR erase, collapsed by default.
  */
 
 import { useState, useCallback } from "react";
 import { useSignMessage } from "wagmi";
 import { useWallet } from "../../contexts/WalletContext";
 import { useFieldProof, type ClaimFieldClassification } from "../../hooks/useFieldProof";
-import { Card } from "../ui/Card";
+import { signedFetch } from "../../utils/signedApi";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
 
@@ -19,10 +18,10 @@ interface ClaimDisclosure {
   fields: ClaimFieldClassification[];
 }
 
-const CLASSIFICATION_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  PUBLIC:   { bg: "rgba(0,229,160,0.15)", color: "#00E5A0", label: "Public" },
-  PRIVATE:  { bg: "rgba(239,68,68,0.15)", color: "#EF4444", label: "Private" },
-  DERIVED:  { bg: "rgba(245,158,11,0.15)", color: "#F59E0B", label: "Derived" },
+const CLASSIFICATION_STYLES: Record<string, { bg: string; color: string; label: string; icon: string }> = {
+  PUBLIC:  { bg: "rgba(0,229,160,0.12)",  color: "#00E5A0", label: "Public",  icon: "👁️" },
+  PRIVATE: { bg: "rgba(239,68,68,0.12)",   color: "#EF4444", label: "Private", icon: "🔒" },
+  DERIVED: { bg: "rgba(245,158,11,0.12)",  color: "#F59E0B", label: "Derived", icon: "⚡" },
 };
 
 function ClassificationBadge({ classification }: { classification: string }) {
@@ -30,16 +29,20 @@ function ClassificationBadge({ classification }: { classification: string }) {
   return (
     <span
       style={{
-        fontSize: "0.6rem",
+        fontSize: "0.625rem",
         fontWeight: 600,
-        padding: "2px 6px",
+        padding: "2px 8px",
         borderRadius: "var(--radius-sm)",
         background: style.bg,
         color: style.color,
         textTransform: "uppercase",
         letterSpacing: "0.05em",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "3px",
       }}
     >
+      <span>{style.icon}</span>
       {style.label}
     </span>
   );
@@ -51,6 +54,10 @@ export function DisclosureConfig({ claims }: { claims: Array<{ claimId: string; 
   const { fetchFields, loading } = useFieldProof();
   const [disclosures, setDisclosures] = useState<Record<string, ClaimDisclosure>>({});
   const [loadingClaim, setLoadingClaim] = useState<string | null>(null);
+
+  // ── Erase state ──
+  const [erasePhase, setErasePhase] = useState<"idle" | "confirm" | "done">("idle");
+  const [erasing, setErasing] = useState(false);
 
   const handleLoadFields = useCallback(
     async (claimId: string) => {
@@ -80,105 +87,201 @@ export function DisclosureConfig({ claims }: { claims: Array<{ claimId: string; 
     }
   }, [claims, disclosures, handleLoadFields]);
 
+  const handleErase = async () => {
+    if (!address || erasing) return;
+    setErasing(true);
+    try {
+      await signedFetch({
+        path: `/identity/${address}/data`,
+        address,
+        signMessage: signMessageAsync,
+        method: "DELETE",
+      });
+      setErasePhase("done");
+    } catch {
+      /* keep confirm state; error surfaces via button re-click */
+    } finally {
+      setErasing(false);
+    }
+  };
+
   const loadedCount = Object.keys(disclosures).length;
-  const totalPublic = Object.values(disclosures).reduce(
-    (sum, d) => sum + d.fields.filter((f) => f.classification === "PUBLIC").length,
-    0
-  );
-  const totalPrivate = Object.values(disclosures).reduce(
-    (sum, d) => sum + d.fields.filter((f) => f.classification === "PRIVATE").length,
-    0
-  );
+  const allLoaded = loadedCount === claims.length;
 
   return (
-    <Card>
-      <div style={{ padding: "var(--space-4)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "var(--space-3)" }}>
-          <div>
-            <p className="eyebrow" style={{ marginBottom: "var(--space-1)" }}>Selective Disclosure</p>
-            <p className="t-xs c-subtle">
-              Control which fields are visible on your public passport. Public fields are shown to everyone; Private fields require a signed disclosure request.
-            </p>
-          </div>
-          {loadedCount > 0 && (
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <p className="t-xs mono" style={{ color: "var(--color-verified)" }}>{totalPublic} public</p>
-              <p className="t-xs mono" style={{ color: "var(--color-danger)" }}>{totalPrivate} private</p>
-            </div>
-          )}
-        </div>
-
-        {claims.length === 0 ? (
-          <p className="t-xs c-subtle" style={{ padding: "var(--space-4) 0", textAlign: "center" }}>
-            No claims yet. Credentials will appear here once issued.
-          </p>
+    <details style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", background: "var(--color-surface-1)" }}>
+      <summary
+        style={{
+          padding: "var(--space-3) var(--space-4)",
+          cursor: "pointer",
+          fontWeight: 600,
+          fontSize: "var(--text-sm)",
+          listStyle: "none",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+        }}
+      >
+        <span>🔒</span>
+        <span style={{ flex: 1 }}>Privacy & Data</span>
+        {erasePhase === "done" ? (
+          <span className="t-xs" style={{ color: "var(--color-verified)", fontWeight: 400 }}>✓ erased</span>
         ) : (
-          <>
-            <div style={{ display: "flex", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
-              <Button size="sm" onClick={handleLoadAll} disabled={loading || loadedCount === claims.length}>
-                {loading ? <><Spinner size={12} /> Loading…</> : loadedCount === claims.length ? "All loaded" : "Load all fields"}
-              </Button>
-            </div>
+          loadedCount > 0 && (
+            <span className="t-xs c-subtle" style={{ fontWeight: 400 }}>
+              {loadedCount}/{claims.length} inspected
+            </span>
+          )
+        )}
+      </summary>
 
-            <div className="grid gap-2">
-              {claims.map((claim) => {
-                const disclosure = disclosures[claim.claimId];
-                const isLoadingThis = loadingClaim === claim.claimId;
+      {erasePhase === "done" ? (
+        <div style={{ padding: "var(--space-4)" }}>
+          <p className="t-sm" style={{ fontWeight: 600, color: "var(--color-verified)", marginBottom: "var(--space-1)" }}>
+            Data erased
+          </p>
+          <p className="t-xs c-subtle">
+            On-chain commitments remain as orphaned hashes — the audit trail is preserved but the data is no longer verifiable. Reload the page to see your updated passport.
+          </p>
+        </div>
+      ) : (
+        <div style={{ padding: "0 var(--space-4) var(--space-4)" }}>
+          {/* ── Field privacy ── */}
+          <p className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Credential fields</p>
+          <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-3)", lineHeight: 1.5 }}>
+            Each credential has fields classified as Public (visible to everyone), Private (requires your signed permission), or Derived (computed, never stored).
+          </p>
 
-                return (
-                  <div
-                    key={claim.claimId}
-                    style={{
-                      padding: "var(--space-3)",
-                      borderRadius: "var(--radius-md)",
-                      border: "1px solid var(--color-border)",
-                      background: disclosure ? "rgba(0,229,160,0.02)" : "transparent",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: disclosure ? "var(--space-2)" : 0 }}>
-                      <div>
-                        <p className="t-sm" style={{ fontWeight: 500 }}>{claim.schemaName}</p>
-                        <p className="t-xs mono c-subtle">{claim.claimId.slice(0, 16)}…</p>
+          {claims.length === 0 ? (
+            <p className="t-xs c-subtle" style={{ padding: "var(--space-3)", textAlign: "center" }}>
+              No credentials yet — nothing to inspect.
+            </p>
+          ) : (
+            <>
+              {!allLoaded && (
+                <div style={{ marginBottom: "var(--space-3)" }}>
+                  <Button size="sm" onClick={handleLoadAll} disabled={loading}>
+                    {loading ? <><Spinner size={12} /> Loading…</> : "Inspect all fields"}
+                  </Button>
+                </div>
+              )}
+
+              <div className="grid gap-2">
+                {claims.map((claim) => {
+                  const disclosure = disclosures[claim.claimId];
+                  const isLoadingThis = loadingClaim === claim.claimId;
+
+                  return (
+                    <div
+                      key={claim.claimId}
+                      style={{
+                        padding: "var(--space-2) var(--space-3)",
+                        borderRadius: "var(--radius-sm)",
+                        border: "1px solid var(--color-border)",
+                        background: disclosure ? "rgba(0,229,160,0.02)" : "transparent",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-2)" }}>
+                        <p className="t-xs" style={{ fontWeight: 500, color: "var(--color-on-surface)", flex: 1, minWidth: 0 }}>
+                          {claim.schemaName}
+                        </p>
+                        {!disclosure ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleLoadFields(claim.claimId)}
+                            disabled={isLoadingThis}
+                          >
+                            {isLoadingThis ? <Spinner size={12} /> : "Inspect"}
+                          </Button>
+                        ) : (
+                          <div style={{ display: "flex", gap: "var(--space-1)", flexShrink: 0 }}>
+                            {disclosure.fields.some((f) => f.classification === "PUBLIC") && (
+                              <span className="t-xs" style={{ color: "var(--color-verified)" }}>
+                                👁️ {disclosure.fields.filter((f) => f.classification === "PUBLIC").length}
+                              </span>
+                            )}
+                            {disclosure.fields.some((f) => f.classification === "PRIVATE") && (
+                              <span className="t-xs" style={{ color: "var(--color-danger)" }}>
+                                🔒 {disclosure.fields.filter((f) => f.classification === "PRIVATE").length}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {!disclosure && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleLoadFields(claim.claimId)}
-                          disabled={isLoadingThis}
-                        >
-                          {isLoadingThis ? <Spinner size={12} /> : "Load fields"}
-                        </Button>
+
+                      {disclosure && (
+                        <div className="grid gap-1" style={{ marginTop: "var(--space-1)" }}>
+                          {disclosure.fields.map((field) => (
+                            <div
+                              key={field.name}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                padding: "2px var(--space-2)",
+                                borderRadius: "var(--radius-sm)",
+                                background: "var(--color-surface-0)",
+                              }}
+                            >
+                              <span className="t-xs" style={{ color: "var(--color-on-surface)" }}>{field.name}</span>
+                              <ClassificationBadge classification={field.classification} />
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
-                    {disclosure && (
-                      <div className="grid gap-1">
-                        {disclosure.fields.map((field) => (
-                          <div
-                            key={field.name}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              padding: "var(--space-1) var(--space-2)",
-                              borderRadius: "var(--radius-sm)",
-                              background: "var(--color-surface-0)",
-                            }}
-                          >
-                            <span className="t-xs mono">{field.name}</span>
-                            <ClassificationBadge classification={field.classification} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+          {/* ── Erase data ── */}
+          <div style={{ marginTop: "var(--space-5)" }}>
+            <p className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Erase off-chain data</p>
+            <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-3)", lineHeight: 1.5 }}>
+              Delete your off-chain metadata. On-chain commitments become orphaned hashes — the audit trail remains, but is no longer verifiable. This cannot be undone.
+            </p>
+
+            {erasePhase === "confirm" && (
+              <div
+                style={{
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.2)",
+                  marginBottom: "var(--space-3)",
+                }}
+              >
+                <p className="t-xs" style={{ color: "var(--color-danger)", fontWeight: 600, marginBottom: "var(--space-1)" }}>
+                  Are you sure?
+                </p>
+                <p className="t-xs c-subtle">
+                  This erases all off-chain data for your wallet ({claims.length} credential{claims.length !== 1 ? "s" : ""}). You will need to re-register to restore your profile.
+                </p>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "var(--space-2)" }}>
+              {erasePhase === "confirm" ? (
+                <>
+                  <Button size="sm" variant="danger" onClick={() => void handleErase()} disabled={erasing}>
+                    {erasing ? <><Spinner size={12} /> Erasing…</> : "Yes, erase my data"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setErasePhase("idle")}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" variant="danger" onClick={() => setErasePhase("confirm")}>
+                  Erase my data
+                </Button>
+              )}
             </div>
-          </>
-        )}
-      </div>
-    </Card>
+          </div>
+        </div>
+      )}
+    </details>
   );
 }

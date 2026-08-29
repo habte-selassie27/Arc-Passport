@@ -61,7 +61,7 @@ export function CredentialCard({
             {schemaName ?? `${claim.schemaId.slice(0, 14)}...`}
           </p>
         </div>
-        <StatusChip status={valid ? "VALID" : "REVOKED"} />
+        <StatusChip status={valid ? "VALID" : claim.validationFailed ? "UNVERIFIED" : "REVOKED"} />
       </div>
       <div className="data-row">
         <span className="data-row__label">Issuer</span>
@@ -122,7 +122,9 @@ export function CredentialCard({
       </div>
       {!valid && (
         <p className="t-xs c-subtle" style={{ marginTop: "var(--space-2)" }}>
-          This credential is revoked, expired, or otherwise invalid on-chain.
+          {claim.validationFailed
+            ? "On-chain verification was unavailable. This credential may be valid — try refreshing."
+            : "This credential is revoked, expired, or otherwise invalid on-chain."}
         </p>
       )}
       <div style={{ marginTop: "var(--space-3)", display: "flex", justifyContent: "flex-end" }}>
