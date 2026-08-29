@@ -8,6 +8,8 @@ export interface ActiveClaim {
   schemaId: string;
   issuer:   string;
   valid:    boolean;
+  /** True when batch validation failed (RPC timeout / error) — claim may be valid on-chain. */
+  validationFailed?: boolean;
 }
 
 export interface IdentityMetadata {
@@ -66,6 +68,8 @@ export interface PassportDocument {
   trustScore:   TrustScore;
   onChainScore: OnChainScore | null;
   generatedAt:  number;
+  /** True when balanceOf > 0 but the identity scan couldn't find the mint event. */
+  scanIncomplete: boolean;
 }
 
 export interface OnChainScore {
