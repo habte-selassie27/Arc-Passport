@@ -122,23 +122,26 @@ export async function startIndexer() {
 
   console.log(`[EAS Indexer] Starting from block ${lastIndexedBlock}`);
 
-  // Backfill from last indexed block
+  // Skip catch-up on startup: the claim indexer already does a full backfill
+  // of the same AttestationRegistry events. Running two catch-up scans
+  // simultaneously starves the RPC rate limit and breaks user-facing scans.
+  // Set the high-water mark so the live watcher picks up from now.
   try {
     const latestBlock = await publicClient.getBlockNumber();
-    if (latestBlock > lastIndexedBlock) {
-      console.log(`[EAS Indexer] Backfilling blocks ${lastIndexedBlock} → ${latestBlock}`);
-      await syncLogs(lastIndexedBlock, latestBlock);
-      lastIndexedBlock = latestBlock;
-      saveEASState();
-    }
+    lastIndexedBlock = latestBlock;
+    saveEASState();
+    console.log(`[EAS Indexer] Skipping catch-up (claim indexer handles it) — live watcher starts at block ${latestBlock}`);
   } catch (err) {
-    console.error("[EAS Indexer] Backfill error:", (err as Error).message);
+    console.error("[EAS Indexer] Failed to read latest block:", (err as Error).message);
   }
 
   // Watch for new events
+  let watchErrorCount = 0;
   const unwatch = publicClient.watchEvent({
     address: ADDRESSES.attestationRegistry,
+    pollingInterval: 30_000,
     onLogs: async (logs) => {
+      watchErrorCount = 0;
       for (const log of logs) {
         try {
           processLog(log);
@@ -149,7 +152,11 @@ export async function startIndexer() {
       saveEASState();
     },
     onError: (err) => {
-      console.error("[EAS Indexer] Watch error:", err.message);
+      watchErrorCount++;
+      const delay = Math.min(60_000, 5_000 * Math.pow(2, watchErrorCount - 1));
+      if (watchErrorCount <= 2) {
+        console.warn(`[EAS Indexer] RPC rate-limited — backing off ${delay}ms`);
+      }
     },
   });
 
@@ -159,15 +166,15 @@ export async function startIndexer() {
 async function syncLogs(from: bigint, to: bigint) {
   if (!ADDRESSES.attestationRegistry) return;
 
-  const CHUNK = 5000n;
-  const DELAY_MS = 1000; // 1s between requests to avoid rate limits
+  const CHUNK = 1000n;          // Smaller chunks to stay under RPC rate limits
+  const BASE_DELAY_MS = 2000;   // 2s base delay between chunks
   let start = from;
 
   while (start <= to) {
     const end = start + CHUNK - 1n > to ? to : start + CHUNK - 1n;
 
     let retries = 0;
-    const maxRetries = 3;
+    const maxRetries = 5;       // More retries with longer backoff
 
     while (retries <= maxRetries) {
       try {
@@ -187,7 +194,7 @@ async function syncLogs(from: bigint, to: bigint) {
         retries++;
 
         if (isRateLimit && retries <= maxRetries) {
-          const backoff = DELAY_MS * Math.pow(2, retries);
+          const backoff = BASE_DELAY_MS * Math.pow(2, retries); // 4s, 8s, 16s, 32s, 64s
           console.log(`[EAS Indexer] Rate limited on ${start}-${end}, retrying in ${backoff}ms (${retries}/${maxRetries})`);
           await new Promise((r) => setTimeout(r, backoff));
         } else {
@@ -199,9 +206,9 @@ async function syncLogs(from: bigint, to: bigint) {
 
     start = end + 1n;
 
-    // Delay between chunks to avoid rate limiting
+    // Delay between chunks — longer delay to respect rate limits
     if (start <= to) {
-      await new Promise((r) => setTimeout(r, DELAY_MS));
+      await new Promise((r) => setTimeout(r, BASE_DELAY_MS));
     }
   }
 }

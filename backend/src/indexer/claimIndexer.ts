@@ -1,4 +1,4 @@
-import { publicClient } from "../services/arcService.js";
+import { publicClient, wsClient } from "../services/arcService.js";
 import { ADDRESSES } from "../config/arc.js";
 import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
 import { processEvent } from "../monitoring/eventMonitor.js";
@@ -6,6 +6,7 @@ import { notifyClaimIssued, notifyClaimRevoked } from "../services/notificationS
 import { decodeEventLog } from "viem";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { rpcGate } from "../utils/rpcSemaphore.js";
 
 interface ClaimIndex {
   claimId: string;
@@ -90,10 +91,15 @@ export async function startClaimIndexer() {
     .then(() => { _catchUpDone = true; console.log("[indexer] Catch-up scan complete, indexer ready"); })
     .catch((err) => { console.error("[indexer] Catch-up scan failed:", (err as Error).message); _catchUpDone = true; });
 
-  publicClient.watchContractEvent({
+  // Use WebSocket for live events if available (push-based, no polling).
+  // Falls back to HTTP polling if ARC_WS_RPC_URL is not set.
+  const liveClient = wsClient ?? publicClient;
+
+  liveClient.watchContractEvent({
     address: ADDRESSES.attestationRegistry,
     abi: ATTESTATION_REGISTRY_ABI,
     eventName: "ClaimIssued",
+    ...(wsClient ? {} : { pollingInterval: 30_000 }),
     onLogs: (logs) => {
       for (const log of logs) {
         const entry: ClaimIndex = {
@@ -124,16 +130,18 @@ export async function startClaimIndexer() {
         });
       }
     },
+    onError: () => {},
   });
 
   // Listen for ClaimRevoked events and mark claims as revoked in the index.
   // Without this handler, revoked claims persist in-memory as valid until the
   // onchain isValid() spot-check in passportService catches them — a correctness
   // gap per AGENTS.md §4.4 and §15.2.6.
-  publicClient.watchContractEvent({
+  liveClient.watchContractEvent({
     address: ADDRESSES.attestationRegistry,
     abi: ATTESTATION_REGISTRY_ABI,
     eventName: "ClaimRevoked",
+    ...(wsClient ? {} : { pollingInterval: 30_000 }),
     onLogs: (logs) => {
       for (const log of logs) {
         const claimId = (log.args.claimId ?? "") as string;
@@ -155,6 +163,7 @@ export async function startClaimIndexer() {
         });
       }
     },
+    onError: () => {},
   });
 
   console.log("[indexer] ClaimIndexer started");
@@ -162,13 +171,13 @@ export async function startClaimIndexer() {
 
 async function _catchUpScan() {
   const latest = await publicClient.getBlockNumber();
-  const chunkSize = 5000n;
+  const chunkSize = 1000n;
   const { lastIndexed: lastIndexed, claims: persistedClaims } = loadPersistedState();
   let fromBlock: bigint;
   if (lastIndexed > 0n) {
     fromBlock = lastIndexed + 1n;
   } else {
-    const totalWindow = 700_000n;
+    const totalWindow = 50_000n; // Reduced from 700k to avoid RPC rate limits
     fromBlock = latest > totalWindow ? latest - totalWindow : 0n;
   }
 
@@ -185,25 +194,30 @@ async function _catchUpScan() {
   for (let start = fromBlock; start <= latest; start += chunkSize) {
     const end = start + chunkSize - 1n > latest ? latest : start + chunkSize - 1n;
     let logs: Awaited<ReturnType<typeof publicClient.getLogs>> = [];
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        logs = await publicClient.getLogs({
-          address: ADDRESSES.attestationRegistry,
-          fromBlock: start,
-          toBlock: end,
-        });
+        logs = await rpcGate(() =>
+          publicClient.getLogs({
+            address: ADDRESSES.attestationRegistry,
+            fromBlock: start,
+            toBlock: end,
+          })
+        );
         break;
       } catch (err) {
-        if (attempt === 2) {
-          console.error(`[indexer] Chunk ${start}–${end} failed after 3 attempts:`, (err as Error).message.slice(0, 120));
+        const msg = (err as Error).message;
+        const isRateLimit = msg.includes("rate limit") || msg.includes("exceeds defined limit");
+        if (attempt === 4) {
+          console.error(`[indexer] Chunk ${start}–${end} failed after 5 attempts:`, msg.slice(0, 120));
         } else {
-          await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+          const backoff = isRateLimit ? 5000 * Math.pow(2, attempt) : 3000 * (attempt + 1);
+          await new Promise((r) => setTimeout(r, backoff));
         }
       }
     }
     totalLogs += logs.length;
     if (indexed > 0 && totalLogs % 50 === 0) savePersistedState(end);
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 8000));
     for (const log of logs) {
       try {
         const decoded = decodeEventLog({
@@ -251,24 +265,29 @@ async function _catchUpScanOnce(fromBlock: bigint, latest: bigint, chunkSize: bi
   for (let start = fromBlock; start <= latest; start += chunkSize) {
     const end = start + chunkSize - 1n > latest ? latest : start + chunkSize - 1n;
     let logs: Awaited<ReturnType<typeof publicClient.getLogs>> = [];
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        logs = await publicClient.getLogs({
-          address: ADDRESSES.attestationRegistry,
-          fromBlock: start,
-          toBlock: end,
-        });
+        logs = await rpcGate(() =>
+          publicClient.getLogs({
+            address: ADDRESSES.attestationRegistry,
+            fromBlock: start,
+            toBlock: end,
+          })
+        );
         break;
       } catch (err) {
-        if (attempt === 2) {
+        if (attempt === 4) {
           console.error(`[indexer] Retry chunk ${start}–${end} failed:`, (err as Error).message.slice(0, 100));
         } else {
-          await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+          const msg = (err as Error).message;
+          const isRateLimit = msg.includes("rate limit") || msg.includes("exceeds defined limit");
+          const backoff = isRateLimit ? 5000 * Math.pow(2, attempt) : 3000 * (attempt + 1);
+          await new Promise((r) => setTimeout(r, backoff));
         }
       }
     }
     totalLogs += logs.length;
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 3500));
     for (const log of logs) {
       try {
         const decoded = decodeEventLog({
