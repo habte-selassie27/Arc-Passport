@@ -140,7 +140,7 @@ contract AttestationRegistryTest is Test {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         vm.prank(issuer);
@@ -195,7 +195,7 @@ contract AttestationRegistryTest is Test {
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
         assertTrue(registry.isValid(claimId));
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
         assertFalse(registry.isValid(claimId));
     }
@@ -204,7 +204,7 @@ contract AttestationRegistryTest is Test {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         Claim memory c = registry.getClaim(claimId);
@@ -216,7 +216,7 @@ contract AttestationRegistryTest is Test {
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
 
         vm.prank(stranger);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(ArcPass__NotIssuer.selector, issuer));
         registry.revoke(claimId);
     }
 
@@ -224,10 +224,10 @@ contract AttestationRegistryTest is Test {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         vm.expectRevert(abi.encodeWithSelector(ArcPass__ClaimAlreadyRevoked.selector, claimId));
         registry.revoke(claimId);
     }
@@ -247,7 +247,7 @@ contract AttestationRegistryTest is Test {
     function test_isValid_returnsFalseForRevoked() public {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
         assertFalse(registry.isValid(claimId));
     }
@@ -285,7 +285,7 @@ contract AttestationRegistryTest is Test {
     function test_getActiveClaim_returnsZeroAfterRevoke() public {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         bytes32 active = registry.getActiveClaim(subject, schemaId, issuer);
@@ -342,7 +342,7 @@ contract AttestationRegistryTest is Test {
         vm.prank(pauser);
         registry.pause();
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         vm.expectRevert();
         registry.revoke(claimId);
     }
@@ -414,9 +414,49 @@ contract AttestationRegistryTest is Test {
         vm.prank(issuer);
         bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         vm.expectEmit(false, true, false, true);
-        emit ClaimRevoked(bytes32(0), revoker, block.timestamp);
+        emit ClaimRevoked(bytes32(0), issuer, block.timestamp);
+        registry.revoke(claimId);
+    }
+
+    // ── adminRevoke() ──
+    function test_adminRevoke_success() public {
+        vm.prank(issuer);
+        bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
+
+        vm.prank(revoker);
+        registry.adminRevoke(claimId);
+        assertFalse(registry.isValid(claimId));
+    }
+
+    function test_adminRevoke_revertsIfNotRevoker() public {
+        vm.prank(issuer);
+        bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
+
+        vm.prank(stranger);
+        vm.expectRevert();
+        registry.adminRevoke(claimId);
+    }
+
+    function test_adminRevoke_revertsIfAlreadyRevoked() public {
+        vm.prank(issuer);
+        bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
+
+        vm.prank(revoker);
+        registry.adminRevoke(claimId);
+
+        vm.prank(revoker);
+        vm.expectRevert(abi.encodeWithSelector(ArcPass__ClaimAlreadyRevoked.selector, claimId));
+        registry.adminRevoke(claimId);
+    }
+
+    function test_revoke_revertsIfNotIssuer() public {
+        vm.prank(issuer);
+        bytes32 claimId = registry.attest(subject, schemaId, DATA, 0);
+
+        vm.prank(revoker);
+        vm.expectRevert(abi.encodeWithSelector(ArcPass__NotIssuer.selector, issuer));
         registry.revoke(claimId);
     }
 }
