@@ -3,6 +3,8 @@ export interface ActiveClaim {
   schemaId: string;
   issuer:   string;
   valid:    boolean;
+  /** True when batch validation failed (RPC timeout / error) — claim may be valid on-chain. */
+  validationFailed?: boolean;
 }
 
 export interface ServiceClaims {
