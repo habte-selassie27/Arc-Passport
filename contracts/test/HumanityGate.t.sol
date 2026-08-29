@@ -86,7 +86,7 @@ contract HumanityGateTest is Test {
         bytes32 claimId = _issue();
         assertTrue(gate.isHumanVerified(subject));
 
-        vm.prank(revoker);
+        vm.prank(issuer);
         registry.revoke(claimId);
 
         assertFalse(gate.isHumanVerified(subject));
