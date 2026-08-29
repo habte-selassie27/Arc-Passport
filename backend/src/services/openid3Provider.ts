@@ -9,6 +9,7 @@ export interface OAuthParams {
   subject: `0x${string}`;
   providerId: OpenID3ProviderId;
   redirectUri?: string;
+  linkId?: string;
 }
 
 export interface OAuthSession {
@@ -119,7 +120,7 @@ export class DAuthProvider implements OpenID3Provider {
       : this.redirectBase;
 
     const redirectUri = `${redirectBase}/openid3/callback`;
-    const state = `${sessionId}:${params.subject}:${params.providerId}`;
+    const state = `${params.linkId || sessionId}:${params.subject}:${params.providerId}`;
 
     const authUrl = new URL(config.authorizeUrl);
     authUrl.searchParams.set("client_id", config.clientId);

@@ -278,13 +278,13 @@ export async function startLinking(
   if (existing?.state === "complete" && existing.claimId) {
     const stillValid = await isClaimValidOnChain(existing.claimId);
     if (stillValid) {
-      const session = await provider.createOAuthSession({ subject, providerId });
+      const session = await provider.createOAuthSession({ subject, providerId, linkId: existing.linkId });
       return { linkId: existing.linkId, authUrl: session.authUrl };
     }
   }
 
   const linkId = randomUUID();
-  const session = await provider.createOAuthSession({ subject, providerId });
+  const session = await provider.createOAuthSession({ subject, providerId, linkId });
 
   const record: OpenID3Link = {
     linkId,
