@@ -119,8 +119,6 @@ export function Web2ProofPage() {
       const result = await start.mutateAsync(templateId);
       setStartData(result);
       setPhase("awaiting");
-      // Open Primus auth in new tab
-      window.open(result.authUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
       setError((err as Error).message);
       setPhase("failed");
@@ -189,11 +187,11 @@ export function Web2ProofPage() {
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <Spinner />
-              <span>Waiting for Web2 verification to complete...</span>
+              <span>Verifying with Primus zkTLS network...</span>
             </div>
             <Callout>
-              A new tab has opened with the verification provider. Complete the verification there, then return here.
-              This page will automatically detect when verification is complete.
+              The Primus attestor network is generating a zero-knowledge TLS proof.
+              This may take 30-60 seconds. Do not close this page.
             </Callout>
           </div>
         </Card>
