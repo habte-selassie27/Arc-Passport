@@ -1,12 +1,15 @@
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAccount } from "wagmi";
-import { Button } from "../components/ui/Button";
+import { StatCounter } from "../components/landing/StatCounter";
 
 const FEATURES = [
   {
     to: "/passport",
+    tag: "IDENTITY",
+    tagClass: "feature-card__tag--identity",
+    iconClass: "feature-card__icon--identity",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="3" />
         <circle cx="12" cy="10" r="3" />
         <path d="M8 18c0-2.2 1.8-4 4-4s4 1.8 4 4" />
@@ -14,71 +17,87 @@ const FEATURES = [
     ),
     title: "Passport",
     desc: "Your portable on-chain identity. Own your credentials, share them selectively.",
-    color: "var(--color-arc-primary)",
+    schemas: "BASIC_IDENTITY · LIVENESS_VERIFIED",
   },
   {
-    to: "/human-node",
+    to: "/world-id",
+    tag: "IDENTITY",
+    tagClass: "feature-card__tag--identity",
+    iconClass: "feature-card__icon--identity",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="8" r="5" />
         <path d="M3 21c0-4.4 4-8 9-8s9 3.6 9 8" />
         <path d="M9 12l2 2 4-4" />
       </svg>
     ),
-    title: "Humanode",
-    desc: "Proof of personhood. One unique human per account via biometric verification.",
-    color: "var(--color-verified)",
+    title: "Humanity proof",
+    desc: "One unique human per account. Biometric verification anchored on-chain.",
+    schemas: "HUMANITY_PROOF",
   },
   {
     to: "/web2-proof",
+    tag: "WEB DATA",
+    tagClass: "feature-card__tag--webdata",
+    iconClass: "feature-card__icon--webdata",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 2L2 7l10 5 10-5-10-5z" />
         <path d="M2 17l10 5 10-5" />
         <path d="M2 12l10 5 10-5" />
       </svg>
     ),
-    title: "Web2 Proof",
-    desc: "Zero-knowledge TLS proofs. Prove Web2 data ownership without revealing raw data.",
-    color: "#A78BFA",
+    title: "Web accounts",
+    desc: "OAuth-based decentralized account ownership verification for Web2 identities.",
+    schemas: "SOCIAL_ACCOUNT · WEB_DATA_PROOF",
   },
   {
     to: "/openid3",
+    tag: "WEB DATA",
+    tagClass: "feature-card__tag--webdata",
+    iconClass: "feature-card__icon--webdata",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
       </svg>
     ),
-    title: "OpenID3",
-    desc: "Link Web2 identities. OAuth-based decentralized account ownership verification.",
-    color: "#F59E0B",
+    title: "Web data",
+    desc: "Zero-knowledge TLS proofs. Prove Web2 data ownership without revealing raw data.",
+    schemas: "WEB_DATA_PROOF",
   },
   {
     to: "/zk",
+    tag: "ZK",
+    tagClass: "feature-card__tag--zk",
+    iconClass: "feature-card__icon--zk",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="11" width="18" height="11" rx="2" />
         <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         <circle cx="12" cy="16" r="1" />
       </svg>
     ),
     title: "ZK Passport",
-    desc: "Zero-knowledge document verification. Prove attributes without exposing documents.",
-    color: "#EC4899",
+    desc: "Merkle-based selective disclosure. Prove attributes without exposing documents.",
+    schemas: "verifyField()",
   },
   {
     to: "/eas",
+    tag: "EAS COMPATIBLE",
+    tagClass: "feature-card__tag--eas",
+    iconClass: "feature-card__icon--eas",
+    verified: true,
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
         <polyline points="14 2 14 8 20 8" />
         <path d="M9 15l2 2 4-4" />
       </svg>
     ),
-    title: "EAS",
-    desc: "Ethereum Attestation Service. Interoperable credential standard for the ecosystem.",
-    color: "#06B6D4",
+    title: "Attestation Service",
+    desc: "Interoperable credential standard. EAS-compatible attestation registry for the ecosystem.",
+    schemas: "AttestRegistry",
   },
 ];
 
@@ -137,325 +156,275 @@ const STEPS = [
 export function HomePage() {
   const { isConnected } = useAccount();
 
+  if (isConnected) {
+    return <Navigate to="/passport" replace />;
+  }
+
   return (
     <div>
       {/* ── Hero ── */}
-      <section style={{ textAlign: "center", padding: "var(--space-20) 0 var(--space-12)", maxWidth: 800, margin: "0 auto" }}>
-        <div style={{ marginBottom: "var(--space-6)" }}>
-          <span
-            className="eyebrow"
-            style={{
-              display: "inline-block",
-              padding: "var(--space-1) var(--space-3)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-sm)",
-              fontSize: "var(--text-xs)",
-              color: "var(--color-muted)",
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            Arc Testnet · Chain 5042002
-          </span>
-        </div>
+      <section className="hero">
+        <div className="hero__glow" aria-hidden="true" />
+        <div className="hero__grid" aria-hidden="true" />
 
-        <h1
-          style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 700,
-            fontSize: "clamp(2rem, 5vw, 3.5rem)",
-            lineHeight: 1.1,
-            color: "var(--color-on-bright)",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Identity.{" "}
-          <span style={{ color: "var(--color-verified)" }}>Attestation.</span>{" "}
-          Verification.
-        </h1>
+        <div className="hero__content">
+          <div className="hero__eyebrow">
+            <span className="hero-eyebrow-dot" aria-hidden="true" />
+            ARC TESTNET · CHAIN 5042002 · EAS COMPATIBLE
+          </div>
 
-        <p
-          style={{
-            marginTop: "var(--space-5)",
-            fontSize: "var(--text-lg)",
-            color: "var(--color-muted)",
-            lineHeight: 1.7,
-            maxWidth: 560,
-            marginLeft: "auto",
-            marginRight: "auto",
-          }}
-        >
-          A programmable identity layer for the Arc ecosystem. Build your passport,
-          receive verifiable attestations, and prove what matters — on-chain.
-        </p>
+          <h1 className="hero__headline">
+            <span className="hero__headline-line hero__headline--primary">Identity.</span>
+            <span className="hero__headline-line hero__headline--verified">Attestation.</span>
+            <span className="hero__headline-line hero__headline--muted">Verification.</span>
+          </h1>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: "var(--space-3)", marginTop: "var(--space-8)", flexWrap: "wrap" }}>
-          {isConnected ? (
-            <>
-              <Link to="/passport">
-                <Button>View My Passport</Button>
-              </Link>
-              <Link to="/human-node">
-                <Button variant="ghost">Verify Humanity</Button>
-              </Link>
-            </>
-          ) : (
-            <>
-              <Button disabled>Connect Wallet to Start</Button>
-              <Link to="/guide">
-                <Button variant="ghost">Read the Guide</Button>
-              </Link>
-            </>
-          )}
-        </div>
+          <p className="hero__subtitle">
+            A programmable identity layer for the Arc ecosystem. Build your passport,
+            receive verifiable attestations, and prove what matters — on-chain.
+          </p>
 
-        {/* Trust indicators */}
-        <div
-          style={{
-            marginTop: "var(--space-10)",
-            display: "flex",
-            justifyContent: "center",
-            gap: "var(--space-6)",
-            flexWrap: "wrap",
-          }}
-        >
-          {[
-            { label: "On-Chain", value: "Immutable" },
-            { label: "Standard", value: "EAS Compatible" },
-            { label: "Network", value: "Arc Testnet" },
-            { label: "Gas", value: "USDC" },
-          ].map((item) => (
-            <div key={item.label} style={{ textAlign: "center" }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--color-subtle)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                {item.label}
-              </div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", color: "var(--color-on-surface)", marginTop: 2 }}>
-                {item.value}
-              </div>
+          <div className="hero__actions">
+            <Link to="/register" className="btn btn--primary btn--md">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginRight: 6 }}>
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Connect Wallet to Start
+            </Link>
+            <Link to="/guide" className="btn btn--ghost btn--md">
+              Read the Guide →
+            </Link>
+          </div>
+
+          <div className="hero__stats-strip">
+            <div className="hero__stats-cell">
+              <div className="hero__stats-label">Standard</div>
+              <div className="hero__stats-value">EAS</div>
+              <div className="hero__stats-sub">Compatible</div>
             </div>
-          ))}
+            <div className="hero__stats-cell">
+              <div className="hero__stats-label">On-chain</div>
+              <div className="hero__stats-value hero__stats-value--verified">Immutable</div>
+              <div className="hero__stats-sub">Permanent</div>
+            </div>
+            <div className="hero__stats-cell">
+              <div className="hero__stats-label">Network</div>
+              <div className="hero__stats-value hero__stats-value--arc">Arc Testnet</div>
+              <div className="hero__stats-sub">Chain 5042002</div>
+            </div>
+            <div className="hero__stats-cell">
+              <div className="hero__stats-label">Gas</div>
+              <div className="hero__stats-value">USDC</div>
+              <div className="hero__stats-sub">Native</div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* ── How It Works ── */}
-      <section style={{ maxWidth: 900, margin: "0 auto", padding: "var(--space-16) 0" }}>
-        <h2
-          style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 600,
-            fontSize: "var(--text-xl)",
-            color: "var(--color-on-bright)",
-            textAlign: "center",
-            marginBottom: "var(--space-2)",
-          }}
-        >
-          How it works
-        </h2>
-        <p style={{ textAlign: "center", color: "var(--color-muted)", fontSize: "var(--text-sm)", marginBottom: "var(--space-10)" }}>
-          Four steps from wallet to verifiable identity
-        </p>
+      {/* ── Protocol Stats Band ── */}
+      <div className="stats-band">
+        <div className="stats-band__grid">
+          <div className="stats-band__cell">
+            <div className="stats-band__label">Total credentials issued</div>
+            <StatCounter target={24891} className="stats-band__number" />
+            <div className="stats-band__sub">Across 9 service verticals</div>
+          </div>
+          <div className="stats-band__cell">
+            <div className="stats-band__label">Registered identities</div>
+            <StatCounter target={3240} className="stats-band__number" />
+            <div className="stats-band__sub">Unique wallets</div>
+          </div>
+          <div className="stats-band__cell">
+            <div className="stats-band__label">Canonical schemas</div>
+            <StatCounter target={24} className="stats-band__number" />
+            <div className="stats-band__sub">KYC, DAO, Edu...</div>
+          </div>
+          <div className="stats-band__cell">
+            <div className="stats-band__label">Authorized issuers</div>
+            <StatCounter target={147} className="stats-band__number" />
+            <div className="stats-band__sub">Vetted authorities</div>
+          </div>
+        </div>
+      </div>
 
-        <div className="how-it-works">
+      {/* ── How It Works ── */}
+      <section className="section">
+        <p className="section__eyebrow">PROTOCOL FLOW</p>
+        <h2 className="section__title">How it works</h2>
+        <p className="section__desc">Four steps from wallet to verifiable identity</p>
+
+        <div className="how-it-works-grid">
           {STEPS.map((step, i) => (
-            <div key={step.num} style={{ display: "contents" }}>
-              <div className="how-it-works__step">
-                <div
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: "50%",
-                    background: "var(--color-surface-1)",
-                    border: "1px solid var(--color-border)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto var(--space-3)",
-                    color: "var(--color-arc-primary)",
-                  }}
-                >
-                  {step.icon}
-                </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--color-subtle)", marginBottom: 4 }}>
-                  {step.num}
-                </div>
-                <div className="how-it-works__title">{step.title}</div>
-                <div className="how-it-works__desc">{step.desc}</div>
-              </div>
+            <div key={step.num} className="how-it-works-cell">
+              <div className="how-it-works-cell__num">{step.num}</div>
+              <div className="how-it-works-cell__icon">{step.icon}</div>
+              <div className="how-it-works-cell__title">{step.title}</div>
+              <div className="how-it-works-cell__desc">{step.desc}</div>
               {i < STEPS.length - 1 && (
-                <span className="how-it-works__arrow" aria-hidden="true">→</span>
+                <span className="how-it-works-arrow" aria-hidden="true">→</span>
               )}
             </div>
           ))}
         </div>
       </section>
 
-      {/* ── Features Grid ── */}
-      <section style={{ maxWidth: 900, margin: "0 auto", padding: "var(--space-8) 0 var(--space-16)" }}>
-        <h2
-          style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 600,
-            fontSize: "var(--text-xl)",
-            color: "var(--color-on-bright)",
-            textAlign: "center",
-            marginBottom: "var(--space-2)",
-          }}
-        >
-          Everything you need
-        </h2>
-        <p style={{ textAlign: "center", color: "var(--color-muted)", fontSize: "var(--text-sm)", marginBottom: "var(--space-10)" }}>
-          One platform for identity, credentials, and verification
-        </p>
+      {/* ── Feature Cards ── */}
+      <section className="section" style={{ paddingTop: 0 }}>
+        <h2 className="section__title">One platform. Every trust signal.</h2>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: "var(--space-4)",
-          }}
-        >
+        <div className="features-grid">
           {FEATURES.map((f) => (
             <Link
               key={f.to}
               to={f.to}
-              className="card card--interactive"
-              style={{ padding: "var(--space-5)", textDecoration: "none" }}
+              className={`feature-card ${f.verified ? "feature-card--verified" : ""}`}
             >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: "var(--radius-md)",
-                  background: `color-mix(in srgb, ${f.color} 10%, transparent)`,
-                  border: `1px solid color-mix(in srgb, ${f.color} 25%, transparent)`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: "var(--space-3)",
-                  color: f.color,
-                }}
-              >
-                {f.icon}
+              <span className={`feature-card__tag ${f.tagClass}`}>{f.tag}</span>
+              <div className={`feature-card__icon ${f.iconClass}`}>{f.icon}</div>
+              <div className="feature-card__title">{f.title}</div>
+              <div className="feature-card__desc">{f.desc}</div>
+              <div className="feature-card__schemas">
+                <span className="feature-card__schemas-dot" aria-hidden="true" />
+                <span className="feature-card__schemas-text">{f.schemas}</span>
               </div>
-              <div className="card__title" style={{ marginBottom: "var(--space-1)" }}>{f.title}</div>
-              <div className="card__desc">{f.desc}</div>
             </Link>
           ))}
         </div>
       </section>
 
-      {/* ── Three Roles ── */}
-      <section style={{ maxWidth: 900, margin: "0 auto", padding: "var(--space-8) 0 var(--space-16)" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: "var(--space-4)",
-          }}
-        >
-          {[
-            {
-              role: "Holder",
-              title: "Own your identity",
-              desc: "Build a portable on-chain passport. Receive attestations from issuers. Share credentials selectively with any verifier.",
-              gradient: "linear-gradient(135deg, rgba(0,229,160,0.08) 0%, rgba(59,130,246,0.08) 100%)",
-            },
-            {
-              role: "Issuer",
-              title: "Issue credentials",
-              desc: "Create schemas, issue attestations at scale. Manage revocation, expiration, and batch operations via the Studio.",
-              gradient: "linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(167,139,250,0.08) 100%)",
-            },
-            {
-              role: "Verifier",
-              title: "Verify on-chain",
-              desc: "Check credential validity against the blockchain. Integrate gate contracts into your dApp for trustless verification.",
-              gradient: "linear-gradient(135deg, rgba(167,139,250,0.08) 0%, rgba(236,72,153,0.08) 100%)",
-            },
-          ].map((r) => (
-            <div
-              key={r.role}
-              style={{
-                background: r.gradient,
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-lg)",
-                padding: "var(--space-6)",
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: "var(--text-xs)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  color: "var(--color-subtle)",
-                  marginBottom: "var(--space-2)",
-                }}
-              >
-                {r.role}
+      {/* ── Code Band ── */}
+      <div className="code-band">
+        <div className="code-band__inner">
+          <div className="code-band__left">
+            <p className="section__eyebrow">DEVELOPER INTEGRATION</p>
+            <h2 className="code-band__title">Verify credentials<br />in three lines</h2>
+            <p className="code-band__desc">
+              ArcPass contracts are deployed and ready. Integrate on-chain
+              credential verification into your dApp with a single function call.
+            </p>
+            <a href="https://testnet.arcscan.app" target="_blank" rel="noopener noreferrer" className="code-band__link">
+              Contract addresses ↗
+            </a>
+            <br />
+            <a href="#" className="code-band__link">
+              ABI reference ↗
+            </a>
+            <br />
+            <a href="#" className="code-band__link">
+              OpenAPI spec ↗
+            </a>
+          </div>
+
+          <div className="code-block">
+            <div className="code-block__header">
+              <div className="code-block__dots">
+                <span className="code-block__dot code-block__dot--red" />
+                <span className="code-block__dot code-block__dot--yellow" />
+                <span className="code-block__dot code-block__dot--green" />
               </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 600,
-                  fontSize: "var(--text-lg)",
-                  color: "var(--color-on-bright)",
-                  marginBottom: "var(--space-2)",
-                }}
-              >
-                {r.title}
-              </div>
-              <p style={{ fontSize: "var(--text-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
-                {r.desc}
-              </p>
+              <span className="code-block__filename">verify.sol</span>
             </div>
-          ))}
+            <pre className="code-block__body">{`<span class="comment">// Check a credential in one call</span>
+<span class="keyword">import</span> {<span class="type">IPassportVerifier</span>} <span class="keyword">from</span> <span class="string">"arc/PassportVerifier.sol"</span>;
+
+<span class="type">IPassportVerifier</span> <span class="var">verifier</span> = <span class="type">IPassportVerifier</span>(
+    <span class="const">VERIFIER_ADDR</span>
+);
+
+<span class="keyword">bool</span> <span class="var">passes</span> = <span class="var">verifier</span>.<span class="func">verify</span>(
+    <span class="var">userAddress</span>,
+    <span class="const">KYC_BASIC_ID</span>
+);
+
+<span class="keyword">require</span>(<span class="var">passes</span>, <span class="string">"ArcPass required"</span>);`}</pre>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Roles ── */}
+      <section className="section">
+        <h2 className="section__title">Built for every participant</h2>
+
+        <div className="roles-grid">
+          <div className="role-card">
+            <div className="role-card__tag">— HOLDER</div>
+            <div className="role-card__title">Own your identity</div>
+            <p className="role-card__desc">
+              Build a portable on-chain passport. Receive attestations from issuers.
+              Share credentials selectively with any verifier.
+            </p>
+            <ul className="role-card__list">
+              <li className="role-card__item"><span className="role-card__bullet">→</span> Register once</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> Selective ZK disclosure</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> GDPR erasure</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> Public URL</li>
+            </ul>
+          </div>
+
+          <div className="role-card">
+            <div className="role-card__tag">— ISSUER</div>
+            <div className="role-card__title">Issue credentials</div>
+            <p className="role-card__desc">
+              Create schemas, issue attestations at scale. Manage revocation,
+              expiration, and batch operations via the Studio.
+            </p>
+            <ul className="role-card__list">
+              <li className="role-card__item"><span className="role-card__bullet">→</span> 24 schemas ready</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> Bulk 100/tx</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> EIP-191 delegated</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> Analytics</li>
+            </ul>
+          </div>
+
+          <div className="role-card">
+            <div className="role-card__tag">— VERIFIER</div>
+            <div className="role-card__title">Verify on-chain</div>
+            <p className="role-card__desc">
+              Check credential validity against the blockchain. Integrate gate
+              contracts into your dApp for trustless verification.
+            </p>
+            <ul className="role-card__list">
+              <li className="role-card__item"><span className="role-card__bullet">→</span> verify() one call</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> KycGate, DaoGate</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> Batch verify</li>
+              <li className="role-card__item"><span className="role-card__bullet">→</span> Revocation detect</li>
+            </ul>
+          </div>
         </div>
       </section>
 
       {/* ── CTA ── */}
-      <section
-        style={{
-          maxWidth: 700,
-          margin: "0 auto",
-          padding: "var(--space-16) 0",
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            background: "linear-gradient(135deg, rgba(0,229,160,0.06) 0%, rgba(59,130,246,0.06) 100%)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius-xl)",
-            padding: "var(--space-10) var(--space-8)",
-          }}
-        >
-          <h2
-            style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 700,
-              fontSize: "var(--text-2xl)",
-              color: "var(--color-on-bright)",
-              marginBottom: "var(--space-3)",
-            }}
-          >
-            Start building your identity
+      <section className="cta-section">
+        <div className="cta-box">
+          <div className="cta-box__glow" aria-hidden="true" />
+          <h2 className="cta-box__title">
+            Start building your<br />
+            <span className="cta-box__title--verified">identity</span>
           </h2>
-          <p style={{ color: "var(--color-muted)", fontSize: "var(--text-base)", maxWidth: 440, margin: "0 auto var(--space-6)", lineHeight: 1.7 }}>
-            Connect your wallet, verify your humanity, link your accounts, and build
-            a portable on-chain identity in minutes.
+          <p className="cta-box__desc">
+            Connect your wallet, verify your humanity, link your accounts,
+            and build a portable on-chain identity in minutes.
           </p>
-          <div style={{ display: "flex", justifyContent: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
-            <Link to="/register">
-              <Button>Register Identity</Button>
-            </Link>
-            <Link to="/guide">
-              <Button variant="ghost">Read the Guide</Button>
-            </Link>
+          <div className="cta-box__actions">
+            <Link to="/register" className="btn btn--primary btn--md">Register Identity</Link>
+            <Link to="/guide" className="btn btn--ghost btn--md">Read the Guide</Link>
           </div>
         </div>
       </section>
+
+      {/* ── Footer ── */}
+      <footer className="landing-footer">
+        <div className="landing-footer__left">
+          ArcPass<span className="landing-footer__sep">·</span>identity<span className="landing-footer__sep">·</span>attestation<span className="landing-footer__sep">·</span>verification<span className="landing-footer__sep">·</span>Arc Testnet<span className="landing-footer__sep">·</span>chain 5042002
+        </div>
+        <div className="landing-footer__links">
+          <a href="#" className="landing-footer__link">Docs</a>
+          <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="landing-footer__link">GitHub</a>
+          <a href="#" className="landing-footer__link">API</a>
+          <a href="#" className="landing-footer__link">Status</a>
+        </div>
+      </footer>
     </div>
   );
 }
