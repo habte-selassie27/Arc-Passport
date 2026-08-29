@@ -1,7 +1,15 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAccount, useSignMessage } from "wagmi";
+import DAuth, { ESignMode } from "@dauth/core";
 import { apiUrl } from "../config/api";
 import { signedFetch } from "../utils/signedApi";
+
+// ── DAuth SDK instance ──
+
+const DAUTH_BASE_URL = import.meta.env.VITE_DAUTH_BASE_URL || "https://demo-api.dauth.network/dauth/sdk/v1.1/";
+const DAUTH_CLIENT_ID = import.meta.env.VITE_DAUTH_CLIENT_ID || "demo";
+
+const dauth = new DAuth({ baseURL: DAUTH_BASE_URL, clientID: DAUTH_CLIENT_ID });
 
 // ── Types ──
 
@@ -94,25 +102,35 @@ export function useOpenID3Flow() {
 
   const poll = async (linkId: string): Promise<OpenID3Link> => {
     if (!address) throw new Error("Connect a wallet first");
-    return signedFetch<OpenID3Link>({
-      path: `/openid3/status/${linkId}`,
-      address,
-      signMessage: signMessageAsync,
-    });
+    const res = await fetch(apiUrl(`/openid3/status/${linkId}`));
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error?.message ?? "Failed to poll status");
+    return json.data as OpenID3Link;
   };
 
-  const complete = useMutation({
-    mutationFn: async (args: { code: string; linkId: string }) => {
+  const verifyWithDAuth = useMutation({
+    mutationFn: async (args: { code: string; linkId: string; providerId: string }) => {
       if (!address) throw new Error("Connect a wallet first");
+
+      // 1. Send OAuth code to DAuth network for proof generation
+      const dauthResult = await dauth.service.authOauth({
+        token: args.code,
+        request_id: args.linkId,
+        id_type: args.providerId as "github" | "twitter",
+        mode: ESignMode.BOTH,
+        withPlainAccount: true,
+      });
+
+      // 2. Send DAuth proof/JWT to backend for verification + attestation
       return signedFetch<OpenID3Link>({
         path: "/openid3/callback",
         address,
         signMessage: signMessageAsync,
         method: "POST",
-        body: args,
+        body: { dauthResult, linkId: args.linkId },
       });
     },
   });
 
-  return { address, start, poll, complete };
+  return { address, start, poll, verifyWithDAuth };
 }
