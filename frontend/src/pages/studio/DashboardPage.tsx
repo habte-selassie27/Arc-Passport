@@ -14,7 +14,7 @@ function getGreeting() {
 
 export function DashboardPage() {
   const { address } = useWallet();
-  const { data: analytics, isLoading: analyticsLoading } = useAnalytics();
+  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useAnalytics();
 
   const claimIssued = analytics?.events?.ClaimIssued?.total ?? 0;
   const claimRevoked = analytics?.events?.ClaimRevoked?.total ?? 0;
@@ -24,7 +24,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="display--medium t-xl" style={{ marginBottom: "var(--space-1)" }}>
-          {getGreeting()} 👋
+          {getGreeting()}
         </h1>
         <p className="t-sm c-muted">
           {address ? `Issuer: ${address.slice(0, 6)}...${address.slice(-4)}` : "Issuer Workspace"}
@@ -32,13 +32,17 @@ export function DashboardPage() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Link to="/studio/credentials/issue">
+        <Link to="/studio/issue">
           <Button variant="primary" size="sm">+ Issue Credential</Button>
         </Link>
         <Link to="/studio/schemas/new">
           <Button variant="ghost" size="sm">Create Schema</Button>
         </Link>
       </div>
+
+      {analyticsError && (
+        <p className="t-sm" style={{ color: "var(--color-danger)" }}>Failed to fetch</p>
+      )}
 
       <div className="grid grid-cols-3 gap-4">
         <StatCard
@@ -70,7 +74,7 @@ export function DashboardPage() {
       <Card>
         <h3 className="display--medium t-lg" style={{ marginBottom: "var(--space-4)" }}>Quick Actions</h3>
         <div className="grid grid-cols-2 gap-3">
-          <Link to="/studio/credentials/issue" className="action-card" style={{ margin: 0 }}>
+          <Link to="/studio/issue" className="action-card" style={{ margin: 0 }}>
             <span className="action-card__icon">+</span>
             <span className="flex-1">
               <span className="action-card__title">Issue credential</span>
@@ -86,7 +90,7 @@ export function DashboardPage() {
             </span>
             <span className="action-card__arrow" aria-hidden="true">→</span>
           </Link>
-          <Link to="/studio/credentials/revoke" className="action-card" style={{ margin: 0 }}>
+          <Link to="/studio/revoke" className="action-card" style={{ margin: 0 }}>
             <span className="action-card__icon">✕</span>
             <span className="flex-1">
               <span className="action-card__title">Revoke credential</span>
