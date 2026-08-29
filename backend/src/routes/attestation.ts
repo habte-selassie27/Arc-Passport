@@ -3,9 +3,11 @@ import rateLimit from "express-rate-limit";
 import { publicClient } from "../services/arcService.js";
 import { requireSignedNonce } from "../middleware/auth.js";
 import { issuerGuard } from "../middleware/issuerGuard.js";
+import { revokerGuard } from "../middleware/revokerGuard.js";
 import {
   issueAttestation,
   revokeClaim,
+  adminRevokeClaim,
   getClaim,
   isValidClaim,
   recordAttestationMemo,
@@ -71,12 +73,40 @@ router.post("/revoke", requireSignedNonce, issuerGuard, attestWriteLimiter, asyn
       return;
     }
 
+    // On-chain revoke() now enforces c.issuer == msg.sender (Circle wallet).
+    // issuerGuard ensures human caller holds ISSUER_ROLE. The Circle wallet that
+    // will sign must be the original issuer — enforced on-chain. With per-service
+    // wallets this gives issuer isolation; with a single wallet all claims share
+    // the same issuer wallet.
     const txHash = await revokeClaim(claimId);
+    res.json({ success: true, data: { txHash } });
+  } catch (err) {
+    const msg = (err as Error).message;
+    const isNotIssuer = msg.includes("NotIssuer") || msg.includes("ArcPass__NotIssuer");
+    res.status(isNotIssuer ? 403 : 500).json({
+      success: false,
+      error: { code: isNotIssuer ? "NOT_CLAIM_ISSUER" : "REVOKE_FAILED", message: msg },
+    });
+  }
+});
+
+router.post("/admin-revoke", requireSignedNonce, revokerGuard, attestWriteLimiter, async (req: Request, res: Response) => {
+  try {
+    const { claimId } = req.body;
+    if (!claimId) {
+      res.status(400).json({
+        success: false,
+        error: { code: "MISSING_FIELD", message: "claimId required" },
+      });
+      return;
+    }
+
+    const txHash = await adminRevokeClaim(claimId);
     res.json({ success: true, data: { txHash } });
   } catch (err) {
     res.status(500).json({
       success: false,
-      error: { code: "REVOKE_FAILED", message: (err as Error).message },
+      error: { code: "ADMIN_REVOKE_FAILED", message: (err as Error).message },
     });
   }
 });
@@ -90,6 +120,54 @@ router.get("/claim/:claimId", async (req: Request, res: Response) => {
     res.status(404).json({
       success: false,
       error: { code: "CLAIM_NOT_FOUND", message: (err as Error).message },
+    });
+  }
+});
+
+// ─── SELECTIVE DISCLOSURE: field classification + Merkle proofs ────────
+
+/**
+ * GET /attestation/issuers
+ * Returns all on-chain issuers with the credential types they support,
+ * derived from indexed ClaimIssued events. Public endpoint — no auth.
+ */
+router.get("/issuers", async (_req: Request, res: Response) => {
+  try {
+    const issuerAddresses = (await publicClient.readContract({
+      address: ADDRESSES.attestationRegistry!,
+      abi: ATTESTATION_REGISTRY_ABI,
+      functionName: "getIssuers",
+    })) as `0x${string}`[];
+
+    const { getAllIndexedClaims } = await import("../indexer/claimIndexer.js");
+    const allClaims = getAllIndexedClaims();
+
+    const { SCHEMA_ID_TO_SERVICE } = await import("../constants/schemas.js");
+
+    const issuerMap = new Map<string, Set<string>>();
+    for (const addr of issuerAddresses) {
+      issuerMap.set(addr.toLowerCase(), new Set());
+    }
+
+    for (const claim of allClaims) {
+      const key = claim.issuer.toLowerCase();
+      const existing = issuerMap.get(key);
+      if (existing) {
+        const service = SCHEMA_ID_TO_SERVICE[claim.schemaId];
+        if (service) existing.add(service);
+      }
+    }
+
+    const issuers = issuerAddresses.map((addr) => ({
+      address: addr,
+      credentialTypes: Array.from(issuerMap.get(addr.toLowerCase()) ?? []),
+    }));
+
+    res.json({ success: true, data: { issuers } });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: { code: "ISSUERS_FETCH_FAILED", message: (err as Error).message },
     });
   }
 });
