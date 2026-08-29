@@ -58,10 +58,19 @@ export function OpenID3IdentityPage() {
   };
 
   // Handle OAuth callback — redirect comes back with ?code=...&state=...
+  // Also handles server-side Twitter flow: ?success=true or ?error=...
   useEffect(() => {
     const code = searchParams.get("code");
     const state = searchParams.get("state");
     const providerError = searchParams.get("error");
+    const success = searchParams.get("success");
+
+    // Server-side Twitter flow success
+    if (success === "true") {
+      setPhase("done");
+      setSearchParams({}, { replace: true });
+      return;
+    }
 
     if (providerError) {
       setError(`OAuth provider returned error: ${providerError}`);
@@ -136,8 +145,15 @@ export function OpenID3IdentityPage() {
     try {
       const result = await start.mutateAsync(providerId);
       setStartData(result);
-      // Redirect in same tab (not new tab) — cleaner OAuth flow
-      window.location.href = result.authUrl;
+
+      // Twitter: server-side redirect flow (backend handles PKCE + redirect)
+      if (providerId === "twitter") {
+        const backendUrl = import.meta.env.VITE_API_URL || "https://arc-passport.onrender.com";
+        window.location.href = `${backendUrl}/openid3/twitter/start?linkId=${result.linkId}`;
+      } else {
+        // GitHub/Discord: client-side redirect (existing flow)
+        window.location.href = result.authUrl;
+      }
     } catch (err) {
       setError((err as Error).message);
       setPhase("failed");

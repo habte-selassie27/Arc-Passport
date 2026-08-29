@@ -1,4 +1,7 @@
 import { Router } from "express";
+import { randomUUID, createHash, randomBytes } from "crypto";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
 import rateLimit from "express-rate-limit";
 import { requireSignedNonce } from "../middleware/auth.js";
 import { ArcPassError, Errors } from "../utils/errors.js";
@@ -6,10 +9,11 @@ import {
   startLinking,
   handleDAuthCallback,
   handleOAuthCallback,
+  exchangeOAuthCode,
   getLink,
   getOpenID3Status,
 } from "../services/openid3Service.js";
-import { getOpenID3Provider, type OpenID3ProviderId } from "../services/openid3Provider.js";
+import { getOpenID3Provider, getOAuthConfig, type OpenID3ProviderId } from "../services/openid3Provider.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
 import { type DAuthResult } from "../utils/dauthVerifier.js";
 
@@ -136,3 +140,194 @@ router.post("/oauth-callback", writeLimiter, requireSignedNonce, async (req, res
     handleError(res, err);
   }
 });
+
+// ── Server-side Twitter OAuth flow ──
+// The full redirect chain (Twitter → backend → frontend) happens server-side.
+// This avoids frontend redirect encoding issues and keeps PKCE entirely server-side.
+
+const FRONTEND_URL = process.env.OPENID3_REDIRECT_BASE || "https://arc-passport.vercel.app";
+
+// Step 1: Frontend hits this endpoint → backend redirects to Twitter
+router.get("/twitter/start", async (req, res) => {
+  try {
+    const linkId = req.query.linkId as string;
+    if (!linkId) {
+      res.status(400).json({ success: false, error: { code: "MISSING_LINK_ID", message: "linkId query param required" } });
+      return;
+    }
+
+    const record = getLink(linkId);
+    if (!record) {
+      res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Link record not found" } });
+      return;
+    }
+
+    const config = getOAuthConfig().twitter;
+    if (!config.clientId) {
+      res.status(500).json({ success: false, error: { code: "NOT_CONFIGURED", message: "Twitter not configured" } });
+      return;
+    }
+
+    // Generate PKCE
+    const codeVerifier = randomBytes(32).toString("base64url");
+    const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+
+    // Update link record with code_verifier
+    record.codeVerifier = codeVerifier;
+    record.updatedAt = Date.now();
+    persistLink(record);
+
+    // Backend redirect URI (Twitter redirects back to our backend, not frontend)
+    const backendBase = process.env.BACKEND_URL || "https://arc-passport.onrender.com";
+    const redirectUri = `${backendBase}/openid3/twitter/callback`;
+
+    // Build Twitter auth URL
+    const authUrl = new URL("https://twitter.com/i/oauth2/authorize");
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("client_id", config.clientId);
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("state", linkId);
+    authUrl.searchParams.set("scope", "users.read");
+    authUrl.searchParams.set("code_challenge", codeChallenge);
+    authUrl.searchParams.set("code_challenge_method", "S256");
+
+    res.redirect(authUrl.toString());
+  } catch (err) {
+    res.redirect(`${FRONTEND_URL}/openid3?error=${encodeURIComponent((err as Error).message)}`);
+  }
+});
+
+// Step 2: Twitter redirects here → backend exchanges code → redirects to frontend
+router.get("/twitter/callback", async (req, res) => {
+  const linkId = req.query.state as string;
+  const code = req.query.code as string;
+  const providerError = req.query.error as string;
+
+  if (providerError || !code || !linkId) {
+    res.redirect(`${FRONTEND_URL}/openid3?error=${providerError || "missing_code"}`);
+    return;
+  }
+
+  try {
+    const record = getLink(linkId);
+    if (!record) {
+      res.redirect(`${FRONTEND_URL}/openid3?error=link_not_found`);
+      return;
+    }
+
+    if (!record.codeVerifier) {
+      res.redirect(`${FRONTEND_URL}/openid3?error=missing_code_verifier`);
+      return;
+    }
+
+    // Exchange code for token + fetch user info
+    const providerUser = await exchangeOAuthCode("twitter", code, record);
+
+    // Import the full attestation flow
+    const { keccak256, encodePacked } = await import("viem");
+    const circleService = await import("../services/circleService.js");
+    const executeContractCall = circleService.executeContractCall;
+
+    const subject = record.subject as `0x${string}`;
+
+    // Compute nullifier
+    const nullifier = keccak256(
+      encodePacked(["string", "string"], ["twitter", providerUser.id])
+    );
+
+    // Update record
+    const now = Date.now();
+    const IDENTITY_TTL_SECONDS = 365 * 24 * 60 * 60;
+    const linkedAt = Math.floor(now / 1000);
+    const expiresAt = linkedAt + IDENTITY_TTL_SECONDS;
+
+    record.state = "linked";
+    record.accountHandle = providerUser.handle;
+    record.accountId = providerUser.id;
+    record.nullifier = nullifier;
+    record.updatedAt = now;
+
+    // Data commitment
+    const dataCommitment = keccak256(
+      encodePacked(
+        ["address", "bytes32", "string", "bool", "uint64"],
+        [subject, nullifier, "twitter", true, BigInt(linkedAt)]
+      )
+    );
+
+    // Issue on-chain attestation
+    const walletId = process.env.CIRCLE_OPENID3_ISSUER_WALLET_ID;
+    const registryAddress = process.env.ATTESTATION_REGISTRY_ADDRESS;
+    const OPENID3_IDENTITY_ID = SOCIAL_SCHEMAS.OPENID3_IDENTITY.id!;
+
+    if (walletId && registryAddress) {
+      record.state = "attesting";
+      // Persist intermediate state
+      persistLink(record);
+
+      try {
+        const txHash = await executeContractCall(
+          walletId,
+          registryAddress as `0x${string}`,
+          "attest(address,bytes32,bytes32,uint256)",
+          [subject, OPENID3_IDENTITY_ID, dataCommitment, expiresAt.toString()]
+        );
+
+        // Recover claimId
+        const arcService = await import("../services/arcService.js");
+        const abis = await import("../abis/AttestationRegistry.js");
+        const publicClient = arcService.publicClient;
+        const ATTESTATION_REGISTRY_ABI = abis.ATTESTATION_REGISTRY_ABI;
+        let claimId: string | undefined;
+        try {
+          const issuers = (await publicClient.readContract({
+            address: registryAddress as `0x${string}`,
+            abi: ATTESTATION_REGISTRY_ABI,
+            functionName: "getIssuers",
+          })) as `0x${string}`[];
+          for (const issuer of issuers) {
+            const cid = (await publicClient.readContract({
+              address: registryAddress as `0x${string}`,
+              abi: ATTESTATION_REGISTRY_ABI,
+              functionName: "getActiveClaim",
+              args: [subject, OPENID3_IDENTITY_ID, issuer],
+            })) as `0x${string}`;
+            if (cid && cid !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+              claimId = cid;
+              break;
+            }
+          }
+        } catch { /* best-effort */ }
+
+        record.state = "complete";
+        record.claimId = claimId ?? undefined;
+        record.txHash = txHash;
+      } catch (err) {
+        record.state = "failed";
+        record.error = (err as Error).message;
+      }
+    } else {
+      record.state = "complete";
+    }
+
+    record.updatedAt = Date.now();
+    persistLink(record);
+
+    res.redirect(`${FRONTEND_URL}/openid3?success=true&provider=twitter`);
+  } catch (err) {
+    res.redirect(`${FRONTEND_URL}/openid3?error=${encodeURIComponent((err as Error).message)}`);
+  }
+});
+
+function persistLink(record: any) {
+  const storePath = join(process.cwd(), ".openid3-links.jsonl");
+  try {
+    const lines = existsSync(storePath) ? readFileSync(storePath, "utf8").split("\n").filter(Boolean) : [];
+    const idx = lines.findIndex((l: string) => {
+      try { return JSON.parse(l).linkId === record.linkId; } catch { return false; }
+    });
+    if (idx >= 0) lines[idx] = JSON.stringify(record);
+    else lines.push(JSON.stringify(record));
+    writeFileSync(storePath, lines.join("\n") + "\n");
+  } catch { /* advisory */ }
+}
