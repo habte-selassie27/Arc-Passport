@@ -1,15 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAccount, useSignMessage } from "wagmi";
-import DAuth, { ESignMode } from "@dauth/core";
 import { apiUrl } from "../config/api";
 import { signedFetch } from "../utils/signedApi";
-
-// ── DAuth SDK instance ──
-
-const DAUTH_BASE_URL = import.meta.env.VITE_DAUTH_BASE_URL || "https://demo-api.dauth.network/dauth/sdk/v1.1/";
-const DAUTH_CLIENT_ID = import.meta.env.VITE_DAUTH_CLIENT_ID || "demo";
-
-const dauth = new DAuth({ baseURL: DAUTH_BASE_URL, clientID: DAUTH_CLIENT_ID });
 
 // ── Types ──
 
@@ -112,22 +104,13 @@ export function useOpenID3Flow() {
     mutationFn: async (args: { code: string; linkId: string; providerId: string }) => {
       if (!address) throw new Error("Connect a wallet first");
 
-      // 1. Send OAuth code to DAuth network for proof generation
-      const dauthResult = await dauth.service.authOauth({
-        token: args.code,
-        request_id: args.linkId,
-        id_type: args.providerId as "github" | "twitter",
-        mode: ESignMode.BOTH,
-        withPlainAccount: true,
-      });
-
-      // 2. Send DAuth proof/JWT to backend for verification + attestation
+      // Server-side OAuth code exchange (bypasses DAuth)
       return signedFetch<OpenID3Link>({
-        path: "/openid3/callback",
+        path: "/openid3/oauth-callback",
         address,
         signMessage: signMessageAsync,
         method: "POST",
-        body: { dauthResult, linkId: args.linkId },
+        body: { code: args.code, linkId: args.linkId },
       });
     },
   });

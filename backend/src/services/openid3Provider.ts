@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID, createHash, randomBytes } from "crypto";
 import { type DAuthProof, type DAuthResult, type VerifiedIdentity, extractIdentity, verifyProof } from "../utils/dauthVerifier.js";
 
 // ── Types ──
@@ -15,6 +15,7 @@ export interface OAuthSession {
   sessionId: string;
   authUrl: string;
   expiresAt: number;
+  codeVerifier?: string; // PKCE code_verifier (stored for token exchange)
 }
 
 export interface VerifyResult {
@@ -37,32 +38,55 @@ export interface OpenID3Provider {
 
 interface ProviderOAuthConfig {
   clientId: string;
+  clientSecret: string;
   authorizeUrl: string;
+  tokenUrl?: string;
   scope: string;
   extraParams?: Record<string, string>;
+  requiresPkce?: boolean;
 }
 
 function getOAuthConfig(): Record<OpenID3ProviderId, ProviderOAuthConfig> {
   return {
     github: {
       clientId: process.env.OPENID3_GITHUB_CLIENT_ID || "",
+      clientSecret: process.env.OPENID3_GITHUB_CLIENT_SECRET || "",
       authorizeUrl: "https://github.com/login/oauth/authorize",
+      tokenUrl: "https://github.com/login/oauth/access_token",
       scope: "read:user user:email",
     },
     twitter: {
       clientId: process.env.OPENID3_TWITTER_CLIENT_ID || "",
+      clientSecret: process.env.OPENID3_TWITTER_CLIENT_SECRET || "",
       authorizeUrl: "https://twitter.com/i/oauth2/authorize",
+      tokenUrl: "https://api.twitter.com/2/oauth2/token",
       scope: "users.read email.read",
+      requiresPkce: true,
       extraParams: { response_type: "code" },
     },
     discord: {
       clientId: process.env.OPENID3_DISCORD_CLIENT_ID || "",
+      clientSecret: process.env.OPENID3_DISCORD_CLIENT_SECRET || "",
       authorizeUrl: "https://discord.com/api/oauth2/authorize",
+      tokenUrl: "https://discord.com/api/oauth2/token",
       scope: "identify email",
       extraParams: { response_type: "code" },
     },
   };
 }
+
+// ── PKCE Helpers ──
+
+function generateCodeVerifier(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+function generateCodeChallenge(verifier: string): string {
+  return createHash("sha256").update(verifier).digest("base64url");
+}
+
+// Exported for direct token exchange
+export { getOAuthConfig };
 
 // ── DAuth-Aware Provider ──
 
@@ -89,7 +113,7 @@ export class DAuthProvider implements OpenID3Provider {
       );
     }
 
-    // Twitter requires HTTPS — use the ngrok URL if provided.
+    // Twitter requires HTTPS — use the env var if provided.
     const redirectBase = params.providerId === "twitter"
       ? (process.env.OPENID3_TWITTER_REDIRECT_BASE || this.redirectBase)
       : this.redirectBase;
@@ -108,10 +132,20 @@ export class DAuthProvider implements OpenID3Provider {
       }
     }
 
+    // Twitter requires PKCE — generate code_verifier + code_challenge
+    let codeVerifier: string | undefined;
+    if (config.requiresPkce) {
+      codeVerifier = generateCodeVerifier();
+      const codeChallenge = generateCodeChallenge(codeVerifier);
+      authUrl.searchParams.set("code_challenge", codeChallenge);
+      authUrl.searchParams.set("code_challenge_method", "S256");
+    }
+
     return {
       sessionId,
       authUrl: authUrl.toString(),
       expiresAt: Date.now() + 600_000,
+      codeVerifier,
     };
   }
 

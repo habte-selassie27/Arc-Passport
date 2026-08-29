@@ -5,6 +5,7 @@ import { ArcPassError, Errors } from "../utils/errors.js";
 import {
   startLinking,
   handleDAuthCallback,
+  handleOAuthCallback,
   getLink,
   getOpenID3Status,
 } from "../services/openid3Service.js";
@@ -113,6 +114,23 @@ router.post("/callback", writeLimiter, requireSignedNonce, async (req, res) => {
 
     const provider = getOpenID3Provider();
     const record = await handleDAuthCallback(linkId, subject, dauthResult, provider);
+    res.json({ success: true, data: record });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// Direct OAuth callback — exchanges code server-side (bypasses DAuth)
+router.post("/oauth-callback", writeLimiter, requireSignedNonce, async (req, res) => {
+  try {
+    const subject = req.verifiedAddress!;
+    const { code, linkId } = req.body as { code: string; linkId: string };
+    if (!code || !linkId) {
+      throw Errors.MissingFields(["code", "linkId"]);
+    }
+
+    const provider = getOpenID3Provider();
+    const record = await handleOAuthCallback(linkId, subject, code, provider);
     res.json({ success: true, data: record });
   } catch (err) {
     handleError(res, err);
