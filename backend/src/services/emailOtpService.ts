@@ -1,6 +1,7 @@
 import { randomUUID, randomInt } from "crypto";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { resolve4 } from "dns/promises";
 import nodemailer from "nodemailer";
 import { keccak256, encodePacked } from "viem";
 import { publicClient } from "./arcService.js";
@@ -73,7 +74,7 @@ function hashOtp(otp: string): string {
 
 // ── Email transport ──
 
-function getTransporter() {
+async function getTransporter() {
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || "587", 10);
   const user = process.env.SMTP_USER;
@@ -83,16 +84,24 @@ function getTransporter() {
     return null; // no SMTP configured — dev mode
   }
 
+  // Resolve IPv4 explicitly — Render blocks outbound IPv6 (ENETUNREACH)
+  let hostAddr = host;
+  try {
+    const addrs = await resolve4(host);
+    if (addrs.length > 0) hostAddr = addrs[0];
+  } catch { /* fall back to hostname */ }
+
   return nodemailer.createTransport({
-    host,
+    host: hostAddr,
     port,
     secure: port === 465,
     auth: { user, pass },
+    tls: { servername: host },
   });
 }
 
 async function sendOtpEmail(email: string, otp: string, templateName: string): Promise<void> {
-  const transporter = getTransporter();
+  const transporter = await getTransporter();
 
   if (!transporter) {
     // Dev mode: log OTP to console
