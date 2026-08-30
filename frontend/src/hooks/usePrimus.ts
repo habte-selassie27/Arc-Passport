@@ -113,5 +113,33 @@ export function useWeb2ProofFlow() {
     },
   });
 
-  return { address, start, poll, complete };
+  // ── Email OTP flow ──
+
+  const startEmail = useMutation({
+    mutationFn: async (args: { email: string; templateId: string }) => {
+      if (!address) throw new Error("Connect a wallet first");
+      return signedFetch<{ verificationId: string }>({
+        path: "/web2-proof/email/start",
+        address,
+        signMessage: signMessageAsync,
+        method: "POST",
+        body: args,
+      });
+    },
+  });
+
+  const verifyEmail = useMutation({
+    mutationFn: async (args: { verificationId: string; code: string }) => {
+      if (!address) throw new Error("Connect a wallet first");
+      return signedFetch<Web2ProofVerification>({
+        path: "/web2-proof/email/verify",
+        address,
+        signMessage: signMessageAsync,
+        method: "POST",
+        body: args,
+      });
+    },
+  });
+
+  return { address, start, poll, complete, startEmail, verifyEmail };
 }

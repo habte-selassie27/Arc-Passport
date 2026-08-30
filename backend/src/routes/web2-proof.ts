@@ -9,6 +9,11 @@ import {
   getWeb2ProofStatus,
 } from "../services/primusService.js";
 import { getPrimusProvider } from "../services/primusProvider.js";
+import {
+  startEmailOtp,
+  verifyEmailOtp,
+  getEmailOtpStatus,
+} from "../services/emailOtpService.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
 
 const router = Router();
@@ -113,6 +118,55 @@ router.post("/callback", writeLimiter, requireSignedNonce, async (req, res) => {
 
     const provider = getPrimusProvider();
     const record = await handleCallback(verificationId, subject, taskId, provider);
+    res.json({ success: true, data: record });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ── Email OTP endpoints ──
+
+router.post("/email/start", writeLimiter, requireSignedNonce, async (req, res) => {
+  try {
+    const subject = req.verifiedAddress!;
+    const { email, templateId } = req.body;
+    if (!email || !templateId) {
+      throw Errors.MissingFields(["email", "templateId"]);
+    }
+
+    const result = await startEmailOtp(subject, email, templateId);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.post("/email/verify", writeLimiter, requireSignedNonce, async (req, res) => {
+  try {
+    const subject = req.verifiedAddress!;
+    const { verificationId, code } = req.body;
+    if (!verificationId || !code) {
+      throw Errors.MissingFields(["verificationId", "code"]);
+    }
+
+    const record = await verifyEmailOtp(verificationId, subject, code);
+    res.json({ success: true, data: record });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.get("/email/status/:verificationId", requireSignedNonce, async (req, res) => {
+  try {
+    const { verificationId } = req.params;
+    const subject = req.verifiedAddress!;
+    const record = await getEmailOtpStatus(verificationId);
+    if (!record) {
+      throw Errors.VerificationNotFound(verificationId);
+    }
+    if (record.subject.toLowerCase() !== subject.toLowerCase()) {
+      throw Errors.VerificationMismatch();
+    }
     res.json({ success: true, data: record });
   } catch (err) {
     handleError(res, err);

@@ -9,13 +9,15 @@ import {
 } from "../hooks/usePrimus";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
 import { Spinner } from "../components/ui/Spinner";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { Callout } from "../components/ui/Callout";
 import { PageHeader } from "../components/ui/PageHeader";
 import { AddressDisplay } from "../components/ui/AddressDisplay";
 
-type Phase = "idle" | "selecting" | "starting" | "awaiting" | "verifying" | "done" | "failed";
+type Phase = "idle" | "selecting" | "starting" | "awaiting" | "verifying" | "done" | "failed"
+  | "entering-email" | "sending-otp" | "entering-otp" | "verifying-otp";
 
 function Progress({ phase }: { phase: Phase }) {
   const steps = [
@@ -40,7 +42,7 @@ function Progress({ phase }: { phase: Phase }) {
 
 export function Web2ProofPage() {
   const { isConnected } = useAccount();
-  const { address, start, poll, complete } = useWeb2ProofFlow();
+  const { address, start, poll, complete, startEmail, verifyEmail } = useWeb2ProofFlow();
   const { data: status } = useWeb2ProofStatus(address);
   const { data: config } = useWeb2ProofConfig();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -50,6 +52,11 @@ export function Web2ProofPage() {
   const [startData, setStartData] = useState<{ verificationId: string; authUrl: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+
+  // Email OTP state
+  const [email, setEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [emailVerificationId, setEmailVerificationId] = useState<string | null>(null);
 
   const stopPolling = () => {
     if (pollRef.current !== null) {
@@ -70,13 +77,16 @@ export function Web2ProofPage() {
     }
   }, []);
 
-  // Poll for completion
+  // Poll for completion (Primus flow)
   useEffect(() => {
     if (phase === "awaiting" && startData?.verificationId) {
       stopPolling();
+      let pollErrors = 0;
+      const MAX_POLL_ERRORS = 10;
       pollRef.current = window.setInterval(async () => {
         try {
           const rec = await poll(startData.verificationId);
+          pollErrors = 0;
           if (rec.state === "complete") {
             stopPolling();
             setPhase("done");
@@ -86,7 +96,12 @@ export function Web2ProofPage() {
             setPhase("failed");
           }
         } catch {
-          // keep polling
+          pollErrors++;
+          if (pollErrors >= MAX_POLL_ERRORS) {
+            stopPolling();
+            setError("Verification polling timed out. The backend may be unavailable.");
+            setPhase("failed");
+          }
         }
       }, 4000);
     }
@@ -111,12 +126,26 @@ export function Web2ProofPage() {
     </div>
   );
 
+  const START_TIMEOUT_MS = 15_000;
+
   const handleSelectTemplate = async (templateId: string) => {
     setSelectedTemplate(templateId);
-    setPhase("starting");
     setError(null);
+
+    // Email template takes a different path
+    if (templateId === "email-ownership") {
+      setPhase("entering-email");
+      return;
+    }
+
+    setPhase("starting");
     try {
-      const result = await start.mutateAsync(templateId);
+      const result = await Promise.race([
+        start.mutateAsync(templateId),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Request timed out — the backend may be unavailable. Please try again.")), START_TIMEOUT_MS)
+        ),
+      ]);
       setStartData(result);
       setPhase("awaiting");
     } catch (err) {
@@ -125,12 +154,44 @@ export function Web2ProofPage() {
     }
   };
 
+  const handleSendOtp = async () => {
+    if (!email || !selectedTemplate) return;
+    setPhase("sending-otp");
+    setError(null);
+    try {
+      const result = await startEmail.mutateAsync({ email, templateId: selectedTemplate });
+      setEmailVerificationId(result.verificationId);
+      setPhase("entering-otp");
+    } catch (err) {
+      setError((err as Error).message);
+      setPhase("entering-email");
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode || !emailVerificationId) return;
+    setPhase("verifying-otp");
+    setError(null);
+    try {
+      await verifyEmail.mutateAsync({ verificationId: emailVerificationId, code: otpCode });
+      setPhase("done");
+    } catch (err) {
+      setError((err as Error).message);
+      setPhase("entering-otp");
+    }
+  };
+
   const handleRetry = () => {
     setPhase("idle");
     setSelectedTemplate(null);
     setStartData(null);
     setError(null);
+    setEmail("");
+    setOtpCode("");
+    setEmailVerificationId(null);
   };
+
+  const isEmailFlow = selectedTemplate === "email-ownership";
 
   return (
     <div className="page-container">
@@ -140,7 +201,7 @@ export function Web2ProofPage() {
         description="Prove ownership of Web2 accounts and data using zero-knowledge TLS proofs. Your data stays private — only the cryptographic proof is recorded on-chain."
       />
 
-      {phase !== "idle" && phase !== "selecting" && (
+      {phase !== "idle" && phase !== "selecting" && phase !== "entering-email" && phase !== "entering-otp" && (
         <Card>
           <Progress phase={phase} />
         </Card>
@@ -152,6 +213,7 @@ export function Web2ProofPage() {
         </ErrorBanner>
       )}
 
+      {/* Template selection */}
       {phase === "idle" && config && (
         <Card>
           <h3 className="text-lg font-semibold mb-4">Select a Verification Template</h3>
@@ -173,6 +235,83 @@ export function Web2ProofPage() {
         </Card>
       )}
 
+      {/* Email input */}
+      {phase === "entering-email" && (
+        <Card>
+          <h3 className="text-lg font-semibold mb-2">Email Ownership Verification</h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Enter the email address you want to verify. We'll send a one-time code to confirm ownership.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
+              style={{ flex: 1 }}
+            />
+            <Button onClick={handleSendOtp} disabled={!email || startEmail.isPending}>
+              {startEmail.isPending ? <Spinner /> : "Send Code"}
+            </Button>
+          </div>
+          <Button variant="ghost" size="sm" onClick={handleRetry} style={{ marginTop: "var(--space-3)" }}>
+            Back to templates
+          </Button>
+        </Card>
+      )}
+
+      {/* OTP input */}
+      {phase === "entering-otp" && (
+        <Card>
+          <h3 className="text-lg font-semibold mb-2">Enter Verification Code</h3>
+          <p className="text-sm text-gray-500 mb-4">
+            We sent a 6-digit code to <strong>{email}</strong>. Check your inbox and enter it below.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="000000"
+              maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+              onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+              style={{ flex: 1, fontFamily: "monospace", letterSpacing: "0.2em", fontSize: "1.25rem" }}
+            />
+            <Button onClick={handleVerifyOtp} disabled={otpCode.length !== 6 || verifyEmail.isPending}>
+              {verifyEmail.isPending ? <Spinner /> : "Verify"}
+            </Button>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => { setPhase("entering-email"); setOtpCode(""); }} style={{ marginTop: "var(--space-3)" }}>
+            Change email
+          </Button>
+        </Card>
+      )}
+
+      {/* Sending OTP spinner */}
+      {phase === "sending-otp" && (
+        <Card>
+          <div className="flex items-center gap-3">
+            <Spinner />
+            <span>Sending verification code to {email}...</span>
+          </div>
+        </Card>
+      )}
+
+      {/* Verifying OTP spinner */}
+      {phase === "verifying-otp" && (
+        <Card>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Spinner />
+              <span>Verifying code and issuing attestation...</span>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Primus initializing */}
       {phase === "starting" && (
         <Card>
           <div className="flex items-center gap-3">
@@ -182,6 +321,7 @@ export function Web2ProofPage() {
         </Card>
       )}
 
+      {/* Primus awaiting */}
       {phase === "awaiting" && (
         <Card>
           <div className="space-y-4">
@@ -197,6 +337,7 @@ export function Web2ProofPage() {
         </Card>
       )}
 
+      {/* Verifying proof */}
       {phase === "verifying" && (
         <Card>
           <div className="flex items-center gap-3">
@@ -206,6 +347,7 @@ export function Web2ProofPage() {
         </Card>
       )}
 
+      {/* Done */}
       {phase === "done" && (
         <Card>
           <div className="space-y-4">
@@ -214,8 +356,14 @@ export function Web2ProofPage() {
               <span className="font-semibold">Web2 Data Verified</span>
             </div>
             <p className="text-sm text-gray-500">
-              Your Web2 data proof has been cryptographically verified and recorded on-chain as an attestation.
+              Your {isEmailFlow ? "email ownership" : "web2 data"} proof has been cryptographically verified and recorded on-chain as an attestation.
             </p>
+            {isEmailFlow && (
+              <div className="text-sm">
+                <span className="text-gray-500">Email: </span>
+                <span className="font-mono">{email}</span>
+              </div>
+            )}
             {status?.provider && (
               <div className="text-sm">
                 <span className="text-gray-500">Provider: </span>

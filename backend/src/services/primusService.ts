@@ -162,7 +162,12 @@ export async function startVerification(
   };
   upsert(record);
 
-  return { verificationId, authUrl: session.authUrl };
+  // Append verificationId to authUrl so the frontend callback handler can
+  // detect the redirect and call the complete endpoint.
+  const authUrl = new URL(session.authUrl);
+  authUrl.searchParams.set("verificationId", verificationId);
+
+  return { verificationId, authUrl: authUrl.toString() };
 }
 
 export async function handleCallback(

@@ -79,6 +79,32 @@ function getTemplateRequest(templateId: string): TemplateRequest {
           { keyName: "id", parseType: "json", parsePath: "$.id" },
         ],
       };
+    case "cex-balance":
+      // Generic CEX balance template — uses Binance as the default provider.
+      // The Primus attestor will capture a TLS proof of the balance API response.
+      return {
+        url: "https://api.binance.com/api/v3/account",
+        method: "GET",
+        header: {
+          // The Primus SDK injects the user's session cookies automatically.
+          // No explicit Authorization header needed for cookie-based auth.
+        },
+        body: "",
+        responseResolves: [
+          { keyName: "totalBalance", parseType: "json", parsePath: "$.balances" },
+          { keyName: "accountType", parseType: "json", parsePath: "$.accountType" },
+        ],
+      };
+    case "email-ownership":
+      return {
+        url: "https://httpbin.org/get",
+        method: "GET",
+        header: {},
+        body: "",
+        responseResolves: [
+          { keyName: "origin", parseType: "json", parsePath: "$.origin" },
+        ],
+      };
     default:
       return {
         url: "https://httpbin.org/get",
@@ -144,7 +170,11 @@ export class PrimusSdkProvider implements PrimusProvider {
       responseResolves: [[templateRequest.responseResolves[0]]],
     };
 
-    const attestResult = await network.attest(attestParams, 60000);
+    // Fire-and-forget: initiate attestation without blocking the response.
+    // The polling flow (verifyAndPollTaskResult) will pick up the result later.
+    network.attest(attestParams, 60000).catch((err) => {
+      console.error("[Primus] attest() failed (non-blocking):", (err as Error).message);
+    });
 
     return {
       taskId: submitResult.taskId,
