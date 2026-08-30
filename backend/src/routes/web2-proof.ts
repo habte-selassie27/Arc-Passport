@@ -91,16 +91,14 @@ router.post("/start", writeLimiter, requireSignedNonce, async (req, res) => {
   }
 });
 
-router.get("/status/:verificationId", requireSignedNonce, async (req, res) => {
+// Public endpoint — verificationId is a secret UUID, no wallet signature needed.
+// Polling every 4s with a signature popup would be terrible UX.
+router.get("/status/:verificationId", async (req, res) => {
   try {
     const { verificationId } = req.params;
-    const subject = req.verifiedAddress!;
     const record = getVerification(verificationId);
     if (!record) {
       throw Errors.VerificationNotFound(verificationId);
-    }
-    if (record.subject.toLowerCase() !== subject.toLowerCase()) {
-      throw Errors.VerificationMismatch();
     }
     res.json({ success: true, data: record });
   } catch (err) {
@@ -156,16 +154,13 @@ router.post("/email/verify", writeLimiter, requireSignedNonce, async (req, res) 
   }
 });
 
-router.get("/email/status/:verificationId", requireSignedNonce, async (req, res) => {
+// Public endpoint — verificationId is a secret UUID.
+router.get("/email/status/:verificationId", async (req, res) => {
   try {
     const { verificationId } = req.params;
-    const subject = req.verifiedAddress!;
     const record = await getEmailOtpStatus(verificationId);
     if (!record) {
       throw Errors.VerificationNotFound(verificationId);
-    }
-    if (record.subject.toLowerCase() !== subject.toLowerCase()) {
-      throw Errors.VerificationMismatch();
     }
     res.json({ success: true, data: record });
   } catch (err) {

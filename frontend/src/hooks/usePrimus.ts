@@ -92,12 +92,11 @@ export function useWeb2ProofFlow() {
   });
 
   const poll = async (verificationId: string): Promise<Web2ProofVerification> => {
-    if (!address) throw new Error("Connect a wallet first");
-    return signedFetch<Web2ProofVerification>({
-      path: `/web2-proof/status/${verificationId}`,
-      address,
-      signMessage: signMessageAsync,
-    });
+    // Public endpoint — no wallet signature needed for status polling.
+    const res = await fetch(apiUrl(`/web2-proof/status/${verificationId}`));
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error?.message ?? "Failed to poll status");
+    return json.data as Web2ProofVerification;
   };
 
   const complete = useMutation({
