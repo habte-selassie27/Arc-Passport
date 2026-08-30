@@ -60,7 +60,7 @@ const v1WriteLimiter = rateLimit({
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ success: true, data: { status: "ok", timestamp: Date.now() } });
+  res.json({ success: true, data: { status: "ok", timestamp: Date.now(), version: "1.1.0" } });
 });
 
 app.get("/retention-policy", (_req, res) => {
