@@ -1,8 +1,6 @@
 import { randomUUID, randomInt } from "crypto";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { resolve4 } from "dns/promises";
-import nodemailer from "nodemailer";
 import { keccak256, encodePacked } from "viem";
 import { publicClient } from "./arcService.js";
 import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
@@ -72,57 +70,47 @@ function hashOtp(otp: string): string {
   return keccak256(encodePacked(["string"], [otp]));
 }
 
-// ── Email transport ──
+// ── Email sending via Resend API (HTTP — works on Render) ──
 
-async function getTransporter() {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (!host || !user || !pass) {
-    return null; // no SMTP configured — dev mode
-  }
-
-  // Resolve IPv4 explicitly — Render blocks outbound IPv6 (ENETUNREACH)
-  let hostAddr = host;
-  try {
-    const addrs = await resolve4(host);
-    if (addrs.length > 0) hostAddr = addrs[0];
-  } catch { /* fall back to hostname */ }
-
-  return nodemailer.createTransport({
-    host: hostAddr,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    tls: { servername: host },
-  });
-}
+const RESEND_API = "https://api.resend.com";
 
 async function sendOtpEmail(email: string, otp: string, templateName: string): Promise<void> {
-  const transporter = await getTransporter();
+  const apiKey = process.env.RESEND_API_KEY;
 
-  if (!transporter) {
+  if (!apiKey) {
     // Dev mode: log OTP to console
     console.log(`[email-otp] Dev mode — OTP for ${email}: ${otp} (template: ${templateName})`);
     return;
   }
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || "ArcPass <noreply@arcpass.app>",
-    to: email,
-    subject: `ArcPass Verification Code: ${otp}`,
-    text: `Your verification code for ${templateName} is: ${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, ignore this email.`,
-    html: `
-      <div style="font-family: monospace; max-width: 480px; margin: 0 auto; padding: 32px;">
-        <h2 style="color: #00E5A0;">ArcPass Verification</h2>
-        <p>Your verification code for <strong>${templateName}</strong> is:</p>
-        <div style="font-size: 32px; letter-spacing: 8px; font-weight: bold; padding: 16px; background: #141b2d; color: #00E5A0; border-radius: 8px; text-align: center; margin: 16px 0;">${otp}</div>
-        <p style="color: #888; font-size: 12px;">This code expires in 10 minutes. If you did not request this, ignore this email.</p>
-      </div>
-    `,
+  const from = process.env.SMTP_FROM || "ArcPass <onboarding@resend.dev>";
+  const html = `
+    <div style="font-family: monospace; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #00E5A0;">ArcPass Verification</h2>
+      <p>Your verification code for <strong>${templateName}</strong> is:</p>
+      <div style="font-size: 32px; letter-spacing: 8px; font-weight: bold; padding: 16px; background: #141b2d; color: #00E5A0; border-radius: 8px; text-align: center; margin: 16px 0;">${otp}</div>
+      <p style="color: #888; font-size: 12px;">This code expires in 10 minutes. If you did not request this, ignore this email.</p>
+    </div>
+  `;
+
+  const res = await fetch(`${RESEND_API}/emails`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [email],
+      subject: `ArcPass Verification Code: ${otp}`,
+      html,
+    }),
   });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Email send failed (${res.status}): ${body}`);
+  }
 }
 
 // ── On-chain helpers ──
