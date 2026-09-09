@@ -9,10 +9,14 @@
  *   POST /zk/submit/attribute         — submit an attribute proof (authenticated)
  *   GET  /zk/document-types           — list trusted document types
  *   GET  /zk/proof/:proofHash         — check if a proof hash has been used
+ *   POST /zk/vault/commit             — record an encrypted ID vault commitment (authenticated)
+ *   GET  /zk/vault/status             — get the caller's vault commitment status (authenticated)
  */
 
 import { Router, Request, Response } from "express";
+import { keccak256, encodePacked } from "viem";
 import { zkProofService } from "../services/zkProofService.js";
+import { commitVault, getVaultStatus } from "../services/zkVaultService.js";
 import { ArcPassError, Errors } from "../utils/errors.js";
 import { requireSignedNonce } from "../middleware/auth.js";
 
@@ -264,6 +268,107 @@ router.get("/proof/:proofHash", async (req: Request, res: Response) => {
       success: true,
       data: { proofHash, used, message: used ? "Proof already used" : "Proof available" },
     });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ── POST /zk/vault/commit — record encrypted ID vault commitment (authenticated) ──
+
+const TRUSTED_VAULT_DOC_TYPES = new Set(["passport", "national_id", "drivers_license", "residence_permit"]);
+
+router.post("/vault/commit", requireSignedNonce, async (req: Request, res: Response) => {
+  try {
+    const { vaultCid, fieldsHash, documentType } = req.body;
+    const subject = req.verifiedAddress as `0x${string}`;
+
+    if (!vaultCid || typeof vaultCid !== "string") {
+      throw new ArcPassError("MISSING_PARAMS", "vaultCid is required", 400);
+    }
+    if (!vaultCid.startsWith("ipfs://")) {
+      throw new ArcPassError("INVALID_VAULT_CID", "vaultCid must be an ipfs:// URI", 400);
+    }
+    if (!isValidBytes32(fieldsHash)) {
+      throw new ArcPassError("INVALID_FIELDS_HASH", "fieldsHash must be bytes32", 400);
+    }
+    if (!documentType || !TRUSTED_VAULT_DOC_TYPES.has(documentType)) {
+      throw new ArcPassError(
+        "INVALID_DOCUMENT_TYPE",
+        `documentType must be one of: ${[...TRUSTED_VAULT_DOC_TYPES].join(", ")}`,
+        400
+      );
+    }
+
+    const result = await commitVault({ subject, vaultCid, fieldsHash, documentType });
+
+    res.json({
+      success: true,
+      data: {
+        message: "Encrypted ID vault commitment recorded on-chain",
+        subject,
+        vaultCid: result.vaultCid,
+        documentType: result.documentType,
+        committedAt: result.committedAt,
+        expiresAt: result.expiresAt,
+        claimId: result.claimId,
+        txHash: result.txHash,
+      },
+    });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ── GET /zk/vault/status — caller's vault commitment status (authenticated) ──
+
+router.get("/vault/status", requireSignedNonce, async (req: Request, res: Response) => {
+  try {
+    const subject = req.verifiedAddress as `0x${string}`;
+    const status = await getVaultStatus(subject);
+    res.json({ success: true, data: status });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ── GET /zk/vault/status/:address — public badge data for any passport ──
+// Deliberately minimal: NO vaultCid (locator) and NO fieldsHash (brute-forceable).
+// Only the fact that a valid commitment exists, its type, and timestamps.
+
+router.get("/vault/status/:address", async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    if (!isValidAddress(address)) {
+      throw Errors.InvalidSubject(address ?? "");
+    }
+    const status = await getVaultStatus(address.toLowerCase() as `0x${string}`);
+    res.json({
+      success: true,
+      data: {
+        committed: status.committed,
+        isValid: status.isValid,
+        documentType: status.documentType,
+        committedAt: status.committedAt,
+        expiresAt: status.expiresAt,
+      },
+    });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ── POST /zk/vault/fields-hash — helper: recompute a fieldsHash server-side ──
+
+router.post("/vault/fields-hash", async (req: Request, res: Response) => {
+  try {
+    const { fields } = req.body;
+    if (!fields || typeof fields !== "object" || Array.isArray(fields)) {
+      throw new ArcPassError("MISSING_PARAMS", "fields object is required", 400);
+    }
+    const fieldsHash = keccak256(
+      encodePacked(["string"], [JSON.stringify(fields, Object.keys(fields).sort())])
+    );
+    res.json({ success: true, data: { fieldsHash } });
   } catch (err) {
     handleError(res, err);
   }

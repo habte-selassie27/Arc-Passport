@@ -6,21 +6,23 @@
  * What it does NOT do: generate ZK proofs (that happens on the user's device).
  */
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useZKVerifiers, useZKStats, useZKProofStatus, useSubmitPassportProof, useSubmitAttributeProof, useVerifyZKProof } from "../hooks/useZKProof";
+import { useZkVault, type VaultStatus } from "../hooks/useZkVault";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { Callout } from "../components/ui/Callout";
 import { CardSkeleton } from "../components/ui/Skeleton";
 import { AddressDisplay } from "../components/ui/AddressDisplay";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "verify" | "submit" | "status";
+type Tab = "overview" | "vault" | "verify" | "submit" | "status";
 
 // ── Main Page ─────────────────────────────────────────────────────────────
 
@@ -35,17 +37,18 @@ export function ZKPassportPage() {
         description="Privacy-preserving identity verification. Prove what you need, reveal nothing extra."
       />
       <div className="flex gap-2" style={{ marginBottom: "var(--space-6)" }}>
-        {(["overview", "verify", "submit", "status"] as const).map((tab) => (
+        {(["overview", "vault", "verify", "submit", "status"] as const).map((tab) => (
           <button
             key={tab}
             className={`btn btn--${activeTab === tab ? "primary" : "ghost"} btn--sm`}
             onClick={() => setActiveTab(tab)}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === "vault" ? "🔒 ID Vault" : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
       {activeTab === "overview" && <OverviewTab />}
+      {activeTab === "vault" && <VaultTab />}
       {activeTab === "verify" && <VerifyTab />}
       {activeTab === "submit" && <SubmitTab />}
       {activeTab === "status" && <StatusTab />}
@@ -465,7 +468,239 @@ function ProofStatusCard({ proofHash }: { proofHash: string }) {
   );
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────────
+// ── Vault Tab — Encrypted ID Vault ─────────────────────────────────────
+
+const VAULT_PHASE_LABEL: Record<string, string> = {
+  idle: "",
+  ocr: "Reading MRZ (on-device OCR)…",
+  key: "Deriving encryption key from wallet signature…",
+  encrypting: "Encrypting (AES-256-GCM)…",
+  uploading: "Pinning encrypted blob to IPFS…",
+  committing: "Recording commitment on-chain…",
+  done: "Committed",
+  error: "Failed",
+};
+
+function VaultTab() {
+  const { address } = useAccount();
+  const vault = useZkVault();
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [status, setStatus] = useState<VaultStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  const loadStatus = useCallback(async () => {
+    if (!address) return;
+    setStatusLoading(true);
+    try {
+      setStatus(await vault.refreshStatus());
+    } catch {
+      setStatus(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [address, vault]);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  const onFile = (f: File | null) => {
+    setFile(f);
+    setPreview(f ? URL.createObjectURL(f) : null);
+    vault.reset();
+  };
+
+  const handleCommit = async () => {
+    if (!file) return;
+    try {
+      await vault.commitVault(file);
+      void loadStatus();
+    } catch {
+      /* error already surfaced via vault.error */
+    }
+  };
+
+  const handleDecrypt = async () => {
+    const cid = status?.vaultCid || vault.commitResult?.vaultCid;
+    if (!cid) return;
+    try {
+      await vault.decryptVault(cid);
+    } catch {
+      /* error already surfaced via vault.error */
+    }
+  };
+
+  if (!address) {
+    return <EmptyState title="Wallet not connected" body="Connect your wallet to use the encrypted ID vault." />;
+  }
+
+  return (
+    <div>
+      <Callout type="info">
+        Your document is read <strong>on-device</strong>, encrypted with a key derived from your wallet
+        signature, and only the <strong>encrypted</strong> blob leaves the browser. The chain stores a
+        commitment — never your data.
+      </Callout>
+
+      {/* Current commitment status */}
+      <Card style={{ marginTop: "var(--space-4)" }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-2)", gap: "var(--space-2)" }}>
+          <h3 className="t-sm" style={{ fontWeight: 600 }}>Vault Status</h3>
+          <Button variant="ghost" size="sm" onClick={() => void loadStatus()} loading={statusLoading}>
+            Refresh
+          </Button>
+        </div>
+        {!status || !status.committed ? (
+          <p className="t-sm c-subtle">No vault committed for this wallet yet.</p>
+        ) : (
+          <>
+            <div className="data-row">
+              <span className="data-row__label">On-chain</span>
+              <span className="t-sm" style={{ color: status.isValid ? "var(--color-verified)" : "var(--color-danger)" }}>
+                {status.isValid ? "✓ Valid attestation" : "Attestation not valid/expired"}
+              </span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Document</span>
+              <span className="t-sm">{status.documentType}</span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Vault CID</span>
+              <span className="mono t-xs" style={{ wordBreak: "break-all" }}>{status.vaultCid}</span>
+            </div>
+            {status.committedAt && (
+              <div className="data-row">
+                <span className="data-row__label">Committed</span>
+                <span className="t-sm">{new Date(status.committedAt * 1000).toLocaleString()}</span>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              style={{ marginTop: "var(--space-3)" }}
+              onClick={() => void handleDecrypt()}
+              loading={vault.phase === "key" || vault.phase === "encrypting"}
+            >
+              🔓 Decrypt &amp; view (local only)
+            </Button>
+          </>
+        )}
+
+        {vault.decrypted && (
+          <Card style={{ marginTop: "var(--space-3)", background: "var(--color-surface-1)" }}>
+            <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-2)" }}>Decrypted fields (never sent anywhere)</p>
+            <div className="grid gap-1">
+              {Object.entries(vault.decrypted.fields).map(([k, v]) => (
+                <div key={k} className="data-row">
+                  <span className="data-row__label">{k}</span>
+                  <span className="mono t-xs">{v}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </Card>
+
+      {/* Upload & commit flow */}
+      <Card style={{ marginTop: "var(--space-4)" }}>
+        <h3 className="t-sm" style={{ fontWeight: 600, marginBottom: "var(--space-3)" }}>Scan or Upload Document</h3>
+        <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-4)" }}>
+          Upload a photo of the ID page. The MRZ (two lines at the bottom) is read locally and its
+          check digits validated — a format-level authenticity check.
+        </p>
+
+        <label
+          style={{
+            display: "block",
+            border: "1px dashed var(--color-border, #444)",
+            borderRadius: "var(--radius-md)",
+            padding: "var(--space-5)",
+            textAlign: "center",
+            cursor: "pointer",
+            background: "var(--color-surface-1)",
+          }}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+          />
+          {preview ? (
+            <img src={preview} alt="document preview" style={{ maxHeight: 180, margin: "0 auto", borderRadius: 8 }} />
+          ) : (
+            <span className="t-sm c-subtle">📷 Tap to scan or upload passport / ID photo</span>
+          )}
+        </label>
+
+        {vault.mrz && (
+          <Card style={{ marginTop: "var(--space-3)", background: "var(--color-surface-1)" }}>
+            <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-2)" }}>
+              MRZ parsed — format {vault.mrz.format} {vault.mrz.allChecksValid ? "· all checksums ✓" : "· some checksums failed"}
+            </p>
+            <div className="grid gap-1">
+              {Object.entries(vault.mrz.fields).map(([k, v]) => (
+                <div key={k} className="data-row">
+                  <span className="data-row__label">{k}</span>
+                  <span className="mono t-xs">{v}</span>
+                </div>
+              ))
+              }
+            </div>
+          </Card>
+        )}
+
+        {vault.isBusy && (
+          <div style={{ marginTop: "var(--space-3)" }}>
+            <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-1)" }}>{VAULT_PHASE_LABEL[vault.phase]}</p>
+            {vault.phase === "ocr" && (
+              <div style={{ height: 4, borderRadius: 2, background: "var(--color-surface-1)", overflow: "hidden" }}>
+                <div style={{ width: `${Math.round(vault.progress * 100)}%`, height: "100%", background: "var(--color-arc-primary)", transition: "width 0.2s" }} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {vault.error && (
+          <div style={{ marginTop: "var(--space-3)" }}><ErrorBanner>{vault.error}</ErrorBanner></div>
+        )}
+
+        <div className="flex gap-2" style={{ marginTop: "var(--space-4)" }}>
+          <Button variant="primary" onClick={() => void handleCommit()} disabled={!file || vault.isBusy} loading={vault.isBusy}>
+            {vault.commitResult ? "Committed ✓" : "Encrypt & Commit"}
+          </Button>
+          {file && !vault.isBusy && (
+            <Button variant="ghost" onClick={() => onFile(null)}>Clear</Button>
+          )}
+        </div>
+
+        {vault.commitResult && (
+          <Card style={{ marginTop: "var(--space-4)", background: "var(--color-surface-1)" }}>
+            <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-2)" }}>Commitment recorded</p>
+            <div className="data-row">
+              <span className="data-row__label">TX Hash</span>
+              <span className="mono t-xs" style={{ color: "var(--color-verified)", wordBreak: "break-all" }}>{vault.commitResult.txHash}</span>
+            </div>
+            <div className="data-row">
+              <span className="data-row__label">Vault CID</span>
+              <span className="mono t-xs" style={{ wordBreak: "break-all" }}>{vault.commitResult.vaultCid}</span>
+            </div>
+            {vault.commitResult.claimId && (
+              <div className="data-row">
+                <span className="data-row__label">Claim ID</span>
+                <span className="mono t-xs" style={{ wordBreak: "break-all" }}>{vault.commitResult.claimId}</span>
+              </div>
+            )}
+          </Card>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ── Stat Card ──────────────────────────────────────────────────────────
 
 function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
   return (

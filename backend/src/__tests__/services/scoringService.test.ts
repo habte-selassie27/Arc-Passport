@@ -21,6 +21,7 @@ import {
   type CategoryScore,
 } from "../../services/scoringService.js";
 import type { ServiceClaims } from "../../types/passport.js";
+import { ZK_PASSPORT_SCHEMAS } from "../../constants/schemas.js";
 
 // ─── Test Fixtures ───────────────────────────────────────────────────────
 
@@ -273,6 +274,89 @@ describe("policy comparison", () => {
     const lowFrictionResult = verifyAddress(services as any, LOW_FRICTION_POLICY);
 
     expect(lowFrictionResult.threshold).toBeLessThan(defaultResult.threshold);
+  });
+});
+
+// ─── ID Vault Bonus Tests ────────────────────────────────────────
+
+describe("ID vault attestation bonus", () => {
+  const VAULT_SCHEMA_ID = ZK_PASSPORT_SCHEMAS.ID_VAULT_COMMITMENT.id!;
+  const PLAIN_SCHEMA_ID = "0x" + "ab".repeat(32); // no bonus applies
+
+  function withVaultClaim(valid: boolean): Record<string, ServiceClaims> {
+    const services = createEmptyServices();
+    services.identity = createServiceClaims("identity", 1);
+    services.zkPassport = {
+      service: "zkPassport",
+      claims: [
+        { claimId: "0xvaultclaim", schemaId: VAULT_SCHEMA_ID, issuer: "0xissuerV", valid },
+      ],
+      verified: valid,
+      claimCount: 1,
+    };
+    return services;
+  }
+
+  it("valid vault commitment scores strictly higher than no vault claim", () => {
+    const baseline = createEmptyServices();
+    baseline.identity = createServiceClaims("identity", 1);
+    const without = computeTrustScore(baseline as any);
+    const with_ = computeTrustScore(withVaultClaim(true) as any);
+
+    expect(with_.score).toBeGreaterThan(without.score);
+    expect(with_.totalClaims).toBe(2); // 1 identity + 1 vault
+    expect(with_.activeCategories).toContain("zkPassport");
+  });
+
+  it("invalid (expired/revoked) vault commitment adds nothing", () => {
+    const baseline = createEmptyServices();
+    baseline.identity = createServiceClaims("identity", 1);
+    const withInvalid = computeTrustScore(withVaultClaim(false) as any);
+    const without = computeTrustScore(baseline as any);
+
+    // Score identical to the same passport without the vault claim
+    expect(withInvalid.score).toBe(without.score);
+    expect(withInvalid.totalClaims).toBe(without.totalClaims);
+  });
+
+  it("vault claim earns the 1.4 schema bonus (vs plain claim at 1.0)", () => {
+    const servicesVault = createEmptyServices();
+    const servicesPlain = createEmptyServices();
+    for (const [services, schemaId] of [
+      [servicesVault, VAULT_SCHEMA_ID],
+      [servicesPlain, PLAIN_SCHEMA_ID],
+    ] as const) {
+      services.zkPassport = {
+        service: "zkPassport",
+        claims: [{ claimId: "0xc1", schemaId, issuer: "0xissuerV", valid: true }],
+        verified: true,
+        claimCount: 1,
+      };
+    }
+
+    const vaultScore = computeTrustScore(servicesVault as any);
+    const plainScore = computeTrustScore(servicesPlain as any);
+
+    expect(vaultScore.score).toBeGreaterThan(plainScore.score);
+    // Category score = (credentialWeight × bonus + uniqueIssuerBonus) × categoryWeight(0.9)
+    const vaultCat = vaultScore.categories.find((c) => c.service === "zkPassport");
+    const plainCat = plainScore.categories.find((c) => c.service === "zkPassport");
+    expect(plainCat!.score).toBeCloseTo((15 * 1.0 + 5) * 0.9, 5); // 18
+    expect(vaultCat!.score).toBeCloseTo((15 * 1.4 + 5) * 0.9, 5); // 23.4
+  });
+
+  it("verifyAddress reflects the vault bonus in the developer API", () => {
+    const base = createMinimalServices();
+    base.zkPassport = {
+      service: "zkPassport",
+      claims: [{ claimId: "0xvaultclaim", schemaId: VAULT_SCHEMA_ID, issuer: "0xissuerV", valid: true }],
+      verified: true,
+      claimCount: 1,
+    };
+
+    const result = verifyAddress(base as any);
+    expect(result.attestationCount).toBe(3);
+    expect(result.passed).toBe(true);
   });
 });
 

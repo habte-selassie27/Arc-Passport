@@ -1,5 +1,6 @@
 import { QRCodeSVG } from "qrcode.react";
 import { LogoMark } from "../ui/LogoMark";
+import { useVaultBadge } from "../../hooks/useZkVault";
 import type { PassportDocument, ServiceKey } from "../../types/passport";
 
 interface CoverCardProps {
@@ -80,6 +81,7 @@ export function CoverCard({ passport, exportMode = false }: CoverCardProps) {
   const totalServices = countServicesWithClaims(passport);
   const isVerified = valid > 0;
   const name = passport.metadata?.name;
+  const { data: vaultBadge } = useVaultBadge(passport.address as `0x${string}` | undefined);
   const qrValue = `${typeof window !== "undefined" ? window.location.origin : "https://arcpass.app"}/passport/${passport.address}`;
 
   const activeServices = (Object.entries(passport.services) as [ServiceKey, { claims: { valid: boolean }[] }][]).filter(
@@ -123,6 +125,32 @@ export function CoverCard({ passport, exportMode = false }: CoverCardProps) {
           <div className="cover-card__address">
             {passport.address.slice(0, 6)}...{passport.address.slice(-4)}
           </div>
+          {vaultBadge?.committed && (
+            <div
+              title={
+                vaultBadge.isValid
+                  ? `Valid ID vault attestation (${vaultBadge.documentType ?? "document"}) — document data stays encrypted`
+                  : "ID vault attestation expired — re-commit to renew"
+              }
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                marginTop: 6,
+                width: "fit-content",
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "3px 9px",
+                borderRadius: 20,
+                color: vaultBadge.isValid ? "#00E5A0" : "#FAB33F",
+                background: vaultBadge.isValid ? "rgba(0,229,160,0.1)" : "rgba(250,179,63,0.1)",
+                border: `1px solid ${vaultBadge.isValid ? "rgba(0,229,160,0.3)" : "rgba(250,179,63,0.3)"}`,
+              }}
+            >
+              <span aria-hidden="true">🛡️</span>
+              {vaultBadge.isValid ? "ID Verified" : "ID Expired"}
+            </div>
+          )}
         </div>
 
         {/* Right: QR + Verification */}

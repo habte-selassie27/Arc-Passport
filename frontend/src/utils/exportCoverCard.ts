@@ -10,8 +10,8 @@ export async function exportCoverCard(
   const WIDTH = 1200;
   const HEIGHT = 630;
 
-  // Build the HTML for the card
-  const html = buildCardHTML(passport);
+  // Fetch public vault-badge state so the PNG matches the live card
+  const html = buildCardHTML(passport, await fetchVaultBadge(passport.address));
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}">
     <foreignObject width="100%" height="100%">
       <div xmlns="http://www.w3.org/1999/xhtml" style="width:${WIDTH}px;height:${HEIGHT}px;">
@@ -81,7 +81,10 @@ function countServices(p: PassportDocument): number {
   ).length;
 }
 
-function buildCardHTML(p: PassportDocument): string {
+function buildCardHTML(
+  p: PassportDocument,
+  vaultBadge?: { committed: boolean; isValid: boolean; documentType?: string }
+): string {
   const valid = countValid(p);
   const total = countTotal(p);
   const issuers = countIssuers(p);
@@ -94,6 +97,11 @@ function buildCardHTML(p: PassportDocument): string {
   const verifiedColor = "#00E5A0";
   const warnColor = "#F59E0B";
   const scoreColor = isVerified ? verifiedColor : warnColor;
+
+  const idBadgeColor = vaultBadge?.isValid ? verifiedColor : "#FAB33F";
+  const idBadgeHtml = vaultBadge?.committed
+    ? `<div class="id-badge" style="color:${idBadgeColor};background:${vaultBadge.isValid ? "rgba(0,229,160,0.1)" : "rgba(250,179,63,0.1)"};border:1px solid ${vaultBadge.isValid ? "rgba(0,229,160,0.3)" : "rgba(250,179,63,0.3)"};">🛡️ ${vaultBadge.isValid ? "ID Verified" : "ID Expired"}</div>`
+    : "";
 
   return `
 <style>
@@ -133,6 +141,11 @@ function buildCardHTML(p: PassportDocument): string {
   .avatar svg { width: 24px; height: 24px; color: #3B82F6; }
   .name { font-size: 28px; font-weight: 700; color: #F8FAFC; letter-spacing: -0.03em; }
   .address { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #475569; }
+  .id-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    width: fit-content; font-size: 13px; font-weight: 600;
+    padding: 4px 12px; border-radius: 20px;
+  }
   .qr-section { display: flex; flex-direction: column; align-items: center; gap: 8px; }
   .qr { border-radius: 8px; overflow: hidden; background: #131924; padding: 8px; }
   .verified-badge {
@@ -196,6 +209,7 @@ function buildCardHTML(p: PassportDocument): string {
       </div>
       <div class="name">${escapeHtml(name)}</div>
       <div class="address">${escapeHtml(addrShort)}</div>
+      ${idBadgeHtml}
     </div>
     <div class="qr-section">
       <div class="qr">
@@ -234,4 +248,24 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+interface VaultBadgeState {
+  committed: boolean;
+  isValid: boolean;
+  documentType?: string;
+}
+
+/** Best-effort fetch of the public vault badge; failure renders without badge. */
+async function fetchVaultBadge(address: string): Promise<VaultBadgeState | undefined> {
+  try {
+    const { API_BASE_URL } = await import("../config/api");
+    const res = await fetch(`${API_BASE_URL}/zk/vault/status/${address}`);
+    if (!res.ok) return undefined;
+    const json = await res.json();
+    if (!json?.success || !json.data?.committed) return undefined;
+    return json.data as VaultBadgeState;
+  } catch {
+    return undefined;
+  }
 }

@@ -11,6 +11,7 @@
  */
 
 import type { ServiceKey } from "../constants/schemas.js";
+import * as schemasModule from "../constants/schemas.js";
 import type { ActiveClaim, ServiceClaims } from "../types/passport.js";
 
 // ─── Scoring Policy ──────────────────────────────────────────────────────
@@ -55,6 +56,11 @@ export const DEFAULT_POLICY: ScoringPolicy = {
     "arcpass_age_over18":      1.3,
     "arcpass_humanity":        1.5,
     "arcpass_aml_screening":   1.3,
+    // ZK passport signals — government-document backed
+    "arcpass_passport_authenticity": 1.5,
+    // Encrypted ID vault commitment — wallet-signed, replay-protected,
+    // validity-checked on-chain before scoring. Only VALID commitments count.
+    "arcpass_zk_id_vault":     1.4,
   },
 };
 
@@ -198,7 +204,7 @@ export function computeTrustScore(
     totalIssuers,
     activeCategories,
     computedAt:      Date.now(),
-    policyVersion:   "1.0.0",
+    policyVersion:   "1.1.0",
   };
 }
 
@@ -225,18 +231,21 @@ function getSchemaBonus(schemaId: string, policy: ScoringPolicy): number {
 /**
  * Reverse-lookup: given a schemaId (hex), return the schema name.
  * Uses the canonical schema definitions from constants/schemas.ts.
+ * Precomputed at module load — schema IDs are static after import.
  */
-function getSchemaNameFromId(schemaId: string): string | undefined {
-  // Lazy-load the schema map to avoid circular dependencies
-  const { ALL_SCHEMAS } = require("../constants/schemas.js") as typeof import("../constants/schemas.js");
+const SCHEMA_NAME_BY_ID: Map<string, string> = (() => {
+  const { ALL_SCHEMAS } = schemasModule;
+  const map = new Map<string, string>();
   for (const schemas of Object.values(ALL_SCHEMAS)) {
     for (const def of Object.values(schemas as Record<string, { id?: string; name?: string }>)) {
-      if (def.id && def.id.toLowerCase() === schemaId.toLowerCase()) {
-        return def.name;
-      }
+      if (def.id && def.name) map.set(def.id.toLowerCase(), def.name);
     }
   }
-  return undefined;
+  return map;
+})();
+
+function getSchemaNameFromId(schemaId: string): string | undefined {
+  return SCHEMA_NAME_BY_ID.get(schemaId.toLowerCase());
 }
 
 // ─── Developer Verification API ──────────────────────────────────────────

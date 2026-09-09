@@ -16,6 +16,7 @@ import { TrustScoreDisplay, ReputationSignals, HistorySection } from "./Passport
 import { schemaNameForId } from "../../utils/schemaNames";
 import { ALL_SERVICE_KEYS, SERVICE_LABELS, type PassportDocument, type ServiceKey, type ActiveClaim } from "../../types/passport";
 import { useIdentityHistory } from "../../hooks/useIdentity";
+import { useVaultBadge } from "../../hooks/useZkVault";
 import type { ClaimFieldClassification, FieldProof } from "../../hooks/useFieldProof";
 import { NotificationsCard } from "../shared/NotificationsCard";
 import { RequestCredentialForm } from "../forms/RequestCredentialForm";
@@ -54,6 +55,7 @@ export function PassportTabNav({ active, onChange }: { active: TabKey; onChange:
 
 export function OverviewPanel({ passport }: { passport: PassportDocument }) {
   const qrValue = `${window.location.origin}/passport/${passport.address}`;
+  const { data: vaultBadge } = useVaultBadge(passport.address as `0x${string}` | undefined);
   const name = passport.metadata?.name;
   const servicesWithClaims = (ALL_SERVICE_KEYS as ServiceKey[]).filter((key) => {
     const svc = passport.services?.[key];
@@ -88,6 +90,36 @@ export function OverviewPanel({ passport }: { passport: PassportDocument }) {
           <p className="t-xs c-subtle" style={{ marginTop: 2 }}>
             Arc Testnet{passport.identityId > 0 ? ` · Identity token #${passport.identityId}` : passport.scanIncomplete ? " · On-chain registration confirmed" : ""}
           </p>
+          {vaultBadge?.committed && (
+            <div
+              className="flex items-center gap-2"
+              style={{
+                marginTop: "var(--space-2)",
+                display: "inline-flex",
+                padding: "2px 10px",
+                borderRadius: 999,
+                background: vaultBadge.isValid ? "rgba(0,229,160,0.12)" : "rgba(250,179,63,0.12)",
+                border: `1px solid ${vaultBadge.isValid ? "rgba(0,229,160,0.35)" : "rgba(250,179,63,0.35)"}`,
+                width: "fit-content",
+              }}
+              title={
+                vaultBadge.isValid
+                  ? `Valid ID vault attestation (${vaultBadge.documentType ?? "document"}) — document data stays encrypted`
+                  : "ID vault attestation expired — re-commit to renew"
+              }
+            >
+              <span aria-hidden="true">🛡️</span>
+              <span
+                className="t-xs"
+                style={{ fontWeight: 600, color: vaultBadge.isValid ? "#00E5A0" : "#FAB33F" }}
+              >
+                {vaultBadge.isValid ? "ID Verified" : "ID Verification Expired"}
+              </span>
+              {vaultBadge.documentType && (
+                <span className="t-xs c-subtle">· {labelDocType(vaultBadge.documentType)}</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2" style={{ marginTop: "var(--space-3)" }}>
           <Button variant="ghost" size="sm" onClick={() => void navigator.clipboard.writeText(passport.address)}>Copy address</Button>
@@ -414,4 +446,16 @@ export function SharePanel({ passport }: { passport: PassportDocument }) {
       </Card>
     </div>
   );
+}
+
+// ---- Vault badge helper ----
+
+function labelDocType(docType?: string): string {
+  switch (docType) {
+    case "passport": return "Passport";
+    case "national_id": return "National ID";
+    case "drivers_license": return "Driver's License";
+    case "residence_permit": return "Residence Permit";
+    default: return docType ?? "Document";
+  }
 }

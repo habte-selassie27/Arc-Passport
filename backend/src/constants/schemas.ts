@@ -366,6 +366,18 @@ export const ZK_PASSPORT_SCHEMAS = {
       { name: "verifiedAt", type: "uint64", classification: "PUBLIC" },
     ],
   }),
+  ID_VAULT_COMMITMENT: finalize({
+    name: "arcpass_zk_id_vault",
+    version: "1.0.0",
+    fields: [
+      { name: "committed", type: "bool", classification: "PUBLIC" },
+      { name: "documentType", type: "string", classification: "PUBLIC" },
+      { name: "vaultCid", type: "string", classification: "PUBLIC" },
+      { name: "fieldsHash", type: "bytes32", classification: "PRIVATE" },
+      { name: "nullifier", type: "bytes32", classification: "PRIVATE" },
+      { name: "committedAt", type: "uint64", classification: "PUBLIC" },
+    ],
+  }),
   NFC_PASSPORT_SCAN: finalize({
     name: "arcpass_nfc_passport_scan",
     version: "1.0.0",
