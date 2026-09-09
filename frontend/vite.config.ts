@@ -74,6 +74,14 @@ function serveMediapipeWasm(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), wasmMimeType(), serveIdkitWasm(), serveMediapipeWasm()],
   server: { port: 5173 },
+  define: {
+    global: "globalThis",
+  },
+  resolve: {
+    alias: {
+      buffer: "buffer",
+    },
+  },
   build: {
     target: "esnext",
     // @metamask/sdk (a dependency of the wagmi metaMask connector) ships as a
