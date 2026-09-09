@@ -13,7 +13,7 @@ import {
   getLink,
   getOpenID3Status,
 } from "../services/openid3Service.js";
-import { getOpenID3Provider, getOAuthConfig, type OpenID3ProviderId } from "../services/openid3Provider.js";
+import { getOpenID3Provider, getOAuthConfig, twitterRedirectUri, type OpenID3ProviderId } from "../services/openid3Provider.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
 import { type DAuthResult } from "../utils/dauthVerifier.js";
 
@@ -177,9 +177,9 @@ router.get("/twitter/start", async (req, res) => {
     record.updatedAt = Date.now();
     persistLink(record);
 
-    // Backend redirect URI (Twitter redirects back to our backend, not frontend)
-    const backendBase = process.env.BACKEND_URL || "https://arc-passport.onrender.com";
-    const redirectUri = `${backendBase}/openid3/twitter/callback`;
+    // Twitter redirects back to our backend. Must exactly match the Callback URI
+    // registered in the X Developer Portal and the token-exchange redirect_uri.
+    const redirectUri = twitterRedirectUri();
 
     // Build Twitter auth URL
     const authUrl = new URL("https://twitter.com/i/oauth2/authorize");

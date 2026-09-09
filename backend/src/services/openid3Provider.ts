@@ -86,6 +86,15 @@ function generateCodeChallenge(verifier: string): string {
   return createHash("sha256").update(verifier).digest("base64url");
 }
 
+// Twitter requires HTTPS redirect URIs (plain localhost is rejected by X for
+// production apps). This MUST exactly match the Callback URI / Redirect URL
+// registered in the X Developer Portal → User authentication settings, and is
+// used both for the /authorize redirect and the token exchange.
+export function twitterRedirectUri(): string {
+  const backendBase = process.env.BACKEND_URL || "http://localhost:3001";
+  return `${backendBase}/openid3/twitter/callback`;
+}
+
 // Exported for direct token exchange
 export { getOAuthConfig };
 

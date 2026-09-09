@@ -4,16 +4,10 @@ import { requireSignedNonce } from "../middleware/auth.js";
 import { ArcPassError, Errors } from "../utils/errors.js";
 import {
   startVerification,
-  handleCallback,
+  handleProofSubmission,
   getVerification,
   getWeb2ProofStatus,
-} from "../services/primusService.js";
-import { getPrimusProvider } from "../services/primusProvider.js";
-import {
-  startEmailOtp,
-  verifyEmailOtp,
-  getEmailOtpStatus,
-} from "../services/emailOtpService.js";
+} from "../services/zkpassService.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
 
 const router = Router();
@@ -46,15 +40,40 @@ router.get("/config", (_req, res) => {
   res.json({
     success: true,
     data: {
-      provider: "primus",
+      provider: "zkpass",
       mechanism: "zktls",
       schemaId: SOCIAL_SCHEMAS.WEB2_DATA_PROOF.id,
       templates: [
-        { id: "github-account", name: "GitHub Account", description: "Prove you own a GitHub account" },
-        { id: "twitter-account", name: "X / Twitter Account", description: "Prove you own an X account" },
-        { id: "discord-account", name: "Discord Account", description: "Prove you own a Discord account" },
-        { id: "email-ownership", name: "Email Ownership", description: "Prove you own an email address" },
-        { id: "cex-balance", name: "CEX Balance", description: "Prove a minimum balance on a centralized exchange" },
+        {
+          id: "twitter-account",
+          name: "X / Twitter Account",
+          description: "Prove you own an X account",
+          zkpassSchemaId: process.env.ZKPASS_TWITTER_SCHEMA_ID || "",
+        },
+        {
+          id: "discord-account",
+          name: "Discord Account",
+          description: "Prove you own a Discord account",
+          zkpassSchemaId: process.env.ZKPASS_DISCORD_SCHEMA_ID || "",
+        },
+        {
+          id: "cex-balance",
+          name: "CEX KYC Level",
+          description: "Prove your KYC level on a centralized exchange",
+          zkpassSchemaId: process.env.ZKPASS_CEX_SCHEMA_ID || "",
+        },
+        {
+          id: "linkedin-account",
+          name: "LinkedIn Account",
+          description: "Prove you own a LinkedIn account",
+          zkpassSchemaId: process.env.ZKPASS_LINKEDIN_SCHEMA_ID || "",
+        },
+        {
+          id: "reddit-account",
+          name: "Reddit Account",
+          description: "Prove you own a Reddit account",
+          zkpassSchemaId: process.env.ZKPASS_REDDIT_SCHEMA_ID || "",
+        },
       ],
     },
   });
@@ -78,87 +97,38 @@ router.get("/verify/:address", async (req, res) => {
 router.post("/start", writeLimiter, requireSignedNonce, async (req, res) => {
   try {
     const subject = req.verifiedAddress!;
-    const { templateId } = req.body;
-    if (!templateId) {
-      throw Errors.MissingFields(["templateId"]);
+    const { schemaId } = req.body;
+    if (!schemaId) {
+      throw Errors.MissingFields(["schemaId"]);
     }
 
-    const provider = getPrimusProvider();
-    const result = await startVerification(subject, templateId, provider);
+    const result = await startVerification(subject, schemaId);
     res.json({ success: true, data: result });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.post("/proof", writeLimiter, requireSignedNonce, async (req, res) => {
+  try {
+    const subject = req.verifiedAddress!;
+    const { verificationId, proof } = req.body;
+    if (!verificationId || !proof) {
+      throw Errors.MissingFields(["verificationId", "proof"]);
+    }
+
+    const record = await handleProofSubmission(verificationId, subject, proof);
+    res.json({ success: true, data: record });
   } catch (err) {
     handleError(res, err);
   }
 });
 
 // Public endpoint — verificationId is a secret UUID, no wallet signature needed.
-// Polling every 4s with a signature popup would be terrible UX.
 router.get("/status/:verificationId", async (req, res) => {
   try {
     const { verificationId } = req.params;
     const record = getVerification(verificationId);
-    if (!record) {
-      throw Errors.VerificationNotFound(verificationId);
-    }
-    res.json({ success: true, data: record });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
-
-router.post("/callback", writeLimiter, requireSignedNonce, async (req, res) => {
-  try {
-    const subject = req.verifiedAddress!;
-    const { taskId, verificationId } = req.body;
-    if (!taskId || !verificationId) {
-      throw Errors.MissingFields(["taskId", "verificationId"]);
-    }
-
-    const provider = getPrimusProvider();
-    const record = await handleCallback(verificationId, subject, taskId, provider);
-    res.json({ success: true, data: record });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
-
-// ── Email OTP endpoints ──
-
-router.post("/email/start", writeLimiter, requireSignedNonce, async (req, res) => {
-  try {
-    const subject = req.verifiedAddress!;
-    const { email, templateId } = req.body;
-    if (!email || !templateId) {
-      throw Errors.MissingFields(["email", "templateId"]);
-    }
-
-    const result = await startEmailOtp(subject, email, templateId);
-    res.json({ success: true, data: result });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
-
-router.post("/email/verify", writeLimiter, requireSignedNonce, async (req, res) => {
-  try {
-    const subject = req.verifiedAddress!;
-    const { verificationId, code } = req.body;
-    if (!verificationId || !code) {
-      throw Errors.MissingFields(["verificationId", "code"]);
-    }
-
-    const record = await verifyEmailOtp(verificationId, subject, code);
-    res.json({ success: true, data: record });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
-
-// Public endpoint — verificationId is a secret UUID.
-router.get("/email/status/:verificationId", async (req, res) => {
-  try {
-    const { verificationId } = req.params;
-    const record = await getEmailOtpStatus(verificationId);
     if (!record) {
       throw Errors.VerificationNotFound(verificationId);
     }

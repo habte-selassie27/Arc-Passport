@@ -7,7 +7,7 @@ import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
 import { executeContractCall } from "./circleService.js";
 import { Errors } from "../utils/errors.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
-import { type OpenID3Provider, type OpenID3ProviderId, getOAuthConfig } from "./openid3Provider.js";
+import { type OpenID3Provider, type OpenID3ProviderId, getOAuthConfig, twitterRedirectUri } from "./openid3Provider.js";
 import { type DAuthResult, type VerifiedIdentity } from "../utils/dauthVerifier.js";
 
 // ── Schema ──
@@ -256,9 +256,10 @@ export async function exchangeOAuthCode(
       return fetchGithubUser((await exchangeGithubCode(code)).access_token);
     case "twitter": {
       if (!record.codeVerifier) throw new Error("Missing code_verifier for Twitter PKCE");
-      const redirectBase = process.env.OPENID3_TWITTER_REDIRECT_BASE || "http://localhost:5173";
-      const redirectUri = `${redirectBase}/openid3/callback`;
-      return fetchTwitterUser((await exchangeTwitterCode(code, record.codeVerifier, redirectUri)).access_token);
+      // Must match the redirect_uri sent to /authorize exactly.
+      return fetchTwitterUser(
+        (await exchangeTwitterCode(code, record.codeVerifier, twitterRedirectUri())).access_token
+      );
     }
     case "discord":
       return fetchDiscordUser((await exchangeDiscordCode(code)).access_token);

@@ -1,17 +1,16 @@
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync, appendFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { keccak256, encodePacked } from "viem";
+import { keccak256, encodePacked, recoverAddress, hashMessage } from "viem";
 import { publicClient } from "./arcService.js";
-import { ADDRESSES } from "../config/arc.js";
 import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
 import { executeContractCall } from "./circleService.js";
 import { ArcPassError, Errors } from "../utils/errors.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
-import { PrimusProvider, MockPrimusProvider } from "./primusProvider.js";
 
-// ── Schema ──
+// ── zkPass Configuration ──
 
+const FIXED_ALLOCATOR_ADDRESS = "0x19a567b3b212a5b35bA0E3B600FbEd5c2eE9083d";
 const WEB2_DATA_PROOF_ID = SOCIAL_SCHEMAS.WEB2_DATA_PROOF.id!;
 const VERIFICATION_TTL_SECONDS = 365 * 24 * 60 * 60; // 1 year
 
@@ -19,13 +18,25 @@ const VERIFICATION_TTL_SECONDS = 365 * 24 * 60 * 60; // 1 year
 
 export type Web2ProofState = "initialized" | "pending" | "verified" | "attesting" | "complete" | "failed" | "expired";
 
+export interface ZkPassProofResult {
+  allocatorAddress: string;
+  allocatorSignature: string;
+  publicFields: Record<string, string>;
+  publicFieldsHash: string;
+  taskId: string;
+  uHash: string;
+  validatorAddress: string;
+  validatorSignature: string;
+  recipient?: string;
+}
+
 export interface Web2ProofVerification {
   verificationId: string;
   subject: string;
   state: Web2ProofState;
-  templateId: string;
+  schemaId: string;
   taskId?: string;
-  nullifier?: string; // provider-specific uniqueness key
+  nullifier?: string;
   provider?: string;
   dataHash?: string;
   claimId?: string;
@@ -110,6 +121,78 @@ async function recoverClaimId(
   return undefined;
 }
 
+// ── Signature Verification ──
+
+function stringToHex(str: string): string {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(str);
+  return "0x" + Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function verifyAllocatorSignature(proof: ZkPassProofResult, schemaId: string): Promise<boolean> {
+  try {
+    const taskIdHex = stringToHex(proof.taskId);
+    const schemaIdHex = stringToHex(schemaId);
+
+    // Encode parameters: (bytes32, bytes32, address)
+    const encoded = encodePacked(
+      ["bytes32", "bytes32", "address"],
+      [taskIdHex as `0x${string}`, schemaIdHex as `0x${string}`, proof.validatorAddress as `0x${string}`]
+    );
+
+    // Hash the encoded parameters
+    const paramsHash = keccak256(encoded);
+
+    // Recover the signer address
+    const recovered = await recoverAddress({
+      hash: paramsHash,
+      signature: proof.allocatorSignature as `0x${string}`,
+    });
+
+    return recovered.toLowerCase() === FIXED_ALLOCATOR_ADDRESS.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+async function verifyValidatorSignature(proof: ZkPassProofResult, schemaId: string): Promise<boolean> {
+  try {
+    const taskIdHex = stringToHex(proof.taskId);
+    const schemaIdHex = stringToHex(schemaId);
+
+    // Encode parameters: (bytes32, bytes32, bytes32, bytes32)
+    const types: string[] = ["bytes32", "bytes32", "bytes32", "bytes32"];
+    const values: string[] = [
+      taskIdHex,
+      schemaIdHex,
+      proof.uHash,
+      proof.publicFieldsHash,
+    ];
+
+    // Add recipient if present
+    if (proof.recipient) {
+      types.push("address");
+      values.push(proof.recipient);
+    }
+
+    const encoded = encodePacked(
+      types as any,
+      values.map(v => v as `0x${string}`)
+    );
+
+    const paramsHash = keccak256(encoded);
+
+    const recovered = await recoverAddress({
+      hash: paramsHash,
+      signature: proof.validatorSignature as `0x${string}`,
+    });
+
+    return recovered.toLowerCase() === proof.validatorAddress.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 // ── Query helpers ──
 
 export function getVerification(verificationId: string): Web2ProofVerification | undefined {
@@ -134,47 +217,37 @@ export function getVerificationByNullifier(nullifier: string): Web2ProofVerifica
 
 export async function startVerification(
   subject: `0x${string}`,
-  templateId: string,
-  provider: PrimusProvider
-): Promise<{ verificationId: string; authUrl: string }> {
+  schemaId: string
+): Promise<{ verificationId: string }> {
   // Idempotency: if already complete + valid on-chain, return existing session
   const existing = getVerificationBySubject(subject);
   if (existing?.state === "complete" && existing.claimId) {
     const stillValid = await isClaimValidOnChain(existing.claimId);
     if (stillValid) {
-      const session = await provider.createVerificationTask({ subject, templateId });
-      return { verificationId: existing.verificationId, authUrl: session.authUrl };
+      return { verificationId: existing.verificationId };
     }
   }
 
   const verificationId = randomUUID();
-  const session = await provider.createVerificationTask({ subject, templateId });
 
   const record: Web2ProofVerification = {
     verificationId,
     subject,
     state: "initialized",
-    templateId,
-    taskId: session.taskId,
+    schemaId,
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    expiresAt: session.expiresAt,
+    expiresAt: Date.now() + 3600_000, // 1 hour to complete
   };
   upsert(record);
 
-  // Append verificationId to authUrl so the frontend callback handler can
-  // detect the redirect and call the complete endpoint.
-  const authUrl = new URL(session.authUrl);
-  authUrl.searchParams.set("verificationId", verificationId);
-
-  return { verificationId, authUrl: authUrl.toString() };
+  return { verificationId };
 }
 
-export async function handleCallback(
+export async function handleProofSubmission(
   verificationId: string,
   subject: `0x${string}`,
-  taskId: string,
-  provider: PrimusProvider
+  proof: ZkPassProofResult
 ): Promise<Web2ProofVerification> {
   const record = getVerification(verificationId);
   if (!record) throw Errors.VerificationNotFound(verificationId);
@@ -182,13 +255,6 @@ export async function handleCallback(
     throw Errors.VerificationMismatch();
   }
   if (record.state === "complete") return record;
-  if (record.state === "initialized" && record.taskId !== taskId) {
-    record.state = "failed";
-    record.error = "Task ID mismatch";
-    record.updatedAt = Date.now();
-    upsert(record);
-    throw Errors.TaskIdMismatch();
-  }
 
   const now = Date.now();
   if (record.expiresAt < now) {
@@ -198,19 +264,29 @@ export async function handleCallback(
     throw Errors.VerificationExpired();
   }
 
-  // Verify via provider
-  const result = await provider.verifyProof(taskId);
-  if (!result.verified || result.error) {
+  // Verify allocator signature
+  const allocatorValid = await verifyAllocatorSignature(proof, record.schemaId);
+  if (!allocatorValid) {
     record.state = "failed";
-    record.error = result.error ?? "Verification failed";
+    record.error = "Invalid allocator signature";
     record.updatedAt = now;
     upsert(record);
-    throw Errors.ProviderVerifyFailed(result.error ?? "unknown");
+    throw Errors.ProviderVerifyFailed("Invalid allocator signature");
+  }
+
+  // Verify validator signature
+  const validatorValid = await verifyValidatorSignature(proof, record.schemaId);
+  if (!validatorValid) {
+    record.state = "failed";
+    record.error = "Invalid validator signature";
+    record.updatedAt = now;
+    upsert(record);
+    throw Errors.ProviderVerifyFailed("Invalid validator signature");
   }
 
   // One-proof-per-provider: reject if nullifier already bound to different subject
-  if (result.dataHash) {
-    const prior = getVerificationByNullifier(result.dataHash);
+  if (proof.uHash) {
+    const prior = getVerificationByNullifier(proof.uHash);
     if (prior && prior.subject.toLowerCase() !== subject.toLowerCase()) {
       record.state = "failed";
       record.error = "Data hash already bound to another wallet";
@@ -222,9 +298,10 @@ export async function handleCallback(
 
   // Mark verified, then issue on-chain attestation
   record.state = "verified";
-  record.nullifier = result.dataHash;
-  record.provider = result.provider;
-  record.dataHash = result.dataHash;
+  record.nullifier = proof.uHash;
+  record.provider = "zkpass-zktls";
+  record.dataHash = proof.publicFieldsHash;
+  record.taskId = proof.taskId;
   record.updatedAt = now;
   upsert(record);
 
@@ -241,7 +318,7 @@ export async function handleCallback(
   const dataCommitment = keccak256(
     encodePacked(
       ["address", "bytes32", "string", "string", "uint64"],
-      [subject, result.dataHash as `0x${string}`, result.provider, result.templateId, BigInt(checkedAt)]
+      [subject, proof.publicFieldsHash as `0x${string}`, "zkpass-zktls", record.schemaId, BigInt(checkedAt)]
     )
   );
 
@@ -293,6 +370,3 @@ export async function getWeb2ProofStatus(
     isHolder: valid,
   };
 }
-
-// Re-export the mock so tests can inject it without importing the provider module.
-export { MockPrimusProvider };

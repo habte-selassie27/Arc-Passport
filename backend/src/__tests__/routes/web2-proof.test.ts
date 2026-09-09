@@ -5,15 +5,14 @@ import crypto from "node:crypto";
 import { privateKeyToAccount } from "viem/accounts";
 
 // Mock the service layer (NOT the route)
-vi.mock("../../services/primusService.js", () => ({
-  startVerification: vi.fn(async (subject: string, templateId: string) => ({
+vi.mock("../../services/zkpassService.js", () => ({
+  startVerification: vi.fn(async (subject: string, schemaId: string) => ({
     verificationId: "vid-1",
-    authUrl: "https://mock-primus.example.com/auth",
   })),
-  handleCallback: vi.fn(async () => ({
+  handleProofSubmission: vi.fn(async () => ({
     verificationId: "vid-1",
     state: "complete",
-    templateId: "github-account",
+    schemaId: "github-account",
     claimId: "0xclaim",
     txHash: "0xtx",
   })),
@@ -21,7 +20,7 @@ vi.mock("../../services/primusService.js", () => ({
     verificationId: "vid-1",
     subject: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     state: "initialized",
-    templateId: "github-account",
+    schemaId: "github-account",
   })),
   getWeb2ProofStatus: vi.fn(async () => ({
     subject: "0xabc",
@@ -81,7 +80,7 @@ describe("GET /web2-proof/config", () => {
     const res = await fetch(`${baseUrl}/web2-proof/config`);
     const json = await res.json();
     expect(json.success).toBe(true);
-    expect(json.data.provider).toBe("primus");
+    expect(json.data.provider).toBe("zkpass");
     expect(json.data.templates).toBeInstanceOf(Array);
     expect(json.data.templates.length).toBeGreaterThan(0);
   });
@@ -103,10 +102,10 @@ describe("Authenticated /web2-proof endpoints", () => {
   });
 
   it("accepts a signed POST /start", async () => {
-    const { status, body } = await signed("/web2-proof/start", "POST", { templateId: "github-account" });
+    const { status, body } = await signed("/web2-proof/start", "POST", { schemaId: "github-account" });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
-    expect(body.data.authUrl).toBeTruthy();
+    expect(body.data.verificationId).toBeTruthy();
   });
 
   it("accepts a signed GET /status/:id", async () => {
@@ -115,10 +114,20 @@ describe("Authenticated /web2-proof endpoints", () => {
     expect(body.data.state).toBe("initialized");
   });
 
-  it("accepts a signed POST /callback", async () => {
-    const { status, body } = await signed("/web2-proof/callback", "POST", {
-      taskId: "task-mock-1",
+  it("accepts a signed POST /proof", async () => {
+    const mockProof = {
+      allocatorAddress: "0x19a567b3b212a5b35bA0E3B600FbEd5c2eE9083d",
+      allocatorSignature: "0x" + "ab".repeat(65),
+      publicFields: { login: "testuser" },
+      publicFieldsHash: "0x" + "cd".repeat(32),
+      taskId: "test-task-id",
+      uHash: "0x" + "ef".repeat(32),
+      validatorAddress: "0x" + "11".repeat(20),
+      validatorSignature: "0x" + "22".repeat(65),
+    };
+    const { status, body } = await signed("/web2-proof/proof", "POST", {
       verificationId: "vid-1",
+      proof: mockProof,
     });
     expect(status).toBe(200);
     expect(body.success).toBe(true);

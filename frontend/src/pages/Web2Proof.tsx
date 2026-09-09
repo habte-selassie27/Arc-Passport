@@ -1,30 +1,26 @@
-import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import {
-  useWeb2ProofFlow,
+  useZkPassFlow,
   useWeb2ProofStatus,
   useWeb2ProofConfig,
   type Web2ProofState,
-} from "../hooks/usePrimus";
+} from "../hooks/useZkPass";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
 import { Spinner } from "../components/ui/Spinner";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { Callout } from "../components/ui/Callout";
 import { PageHeader } from "../components/ui/PageHeader";
 import { AddressDisplay } from "../components/ui/AddressDisplay";
 
-type Phase = "idle" | "selecting" | "starting" | "awaiting" | "verifying" | "done" | "failed"
-  | "entering-email" | "sending-otp" | "entering-otp" | "verifying-otp";
+type Phase = "idle" | "checking-extension" | "starting" | "proving" | "submitting" | "done" | "failed";
 
 function Progress({ phase }: { phase: Phase }) {
   const steps = [
-    { key: "selecting", label: "Select Template" },
     { key: "starting", label: "Initialize Verification" },
-    { key: "awaiting", label: "Complete Web2 Verification" },
-    { key: "verifying", label: "Verify Proof" },
+    { key: "proving", label: "Complete zkTLS Proof" },
+    { key: "submitting", label: "Verify & Attest" },
     { key: "done", label: "Attestation Issued" },
   ];
   const current = steps.findIndex((s) => s.key === phase);
@@ -42,71 +38,21 @@ function Progress({ phase }: { phase: Phase }) {
 
 export function Web2ProofPage() {
   const { isConnected } = useAccount();
-  const { address, start, poll, complete, startEmail, verifyEmail } = useWeb2ProofFlow();
+  const { address, start, submitProof, checkExtension, launchVerification, isExtensionAvailable } = useZkPassFlow();
   const { data: status } = useWeb2ProofStatus(address);
   const { data: config } = useWeb2ProofConfig();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const [phase, setPhase] = useState<Phase>("idle");
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
-  const [startData, setStartData] = useState<{ verificationId: string; authUrl: string } | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; zkpassSchemaId: string } | null>(null);
+  const [verificationId, setVerificationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<number | null>(null);
 
-  // Email OTP state
-  const [email, setEmail] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [emailVerificationId, setEmailVerificationId] = useState<string | null>(null);
-
-  const stopPolling = () => {
-    if (pollRef.current !== null) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  // Handle OAuth callback
+  // Check extension availability on mount
   useEffect(() => {
-    const taskId = searchParams.get("taskId");
-    const verificationId = searchParams.get("verificationId");
-    if (taskId && verificationId && address) {
-      setPhase("verifying");
-      complete.mutateAsync({ taskId, verificationId })
-        .then(() => { setPhase("done"); setSearchParams({}, { replace: true }); })
-        .catch((err) => { setError(err.message); setPhase("failed"); setSearchParams({}, { replace: true }); });
+    if (isConnected) {
+      checkExtension();
     }
-  }, []);
-
-  // Poll for completion (Primus flow)
-  useEffect(() => {
-    if (phase === "awaiting" && startData?.verificationId) {
-      stopPolling();
-      let pollErrors = 0;
-      const MAX_POLL_ERRORS = 10;
-      pollRef.current = window.setInterval(async () => {
-        try {
-          const rec = await poll(startData.verificationId);
-          pollErrors = 0;
-          if (rec.state === "complete") {
-            stopPolling();
-            setPhase("done");
-          } else if (rec.state === "failed" || rec.state === "expired") {
-            stopPolling();
-            setError(rec.error ?? `Verification ${rec.state}`);
-            setPhase("failed");
-          }
-        } catch {
-          pollErrors++;
-          if (pollErrors >= MAX_POLL_ERRORS) {
-            stopPolling();
-            setError("Verification polling timed out. The backend may be unavailable.");
-            setPhase("failed");
-          }
-        }
-      }, 4000);
-    }
-    return stopPolling;
-  }, [phase, startData]);
+  }, [isConnected, checkExtension]);
 
   // If already verified, show done
   useEffect(() => {
@@ -126,72 +72,52 @@ export function Web2ProofPage() {
     </div>
   );
 
-  const START_TIMEOUT_MS = 15_000;
-
-  const handleSelectTemplate = async (templateId: string) => {
-    setSelectedTemplate(templateId);
+  const handleSelectTemplate = async (template: { id: string; zkpassSchemaId: string }) => {
+    setSelectedTemplate(template);
     setError(null);
+    setPhase("checking-extension");
 
-    // Email template takes a different path
-    if (templateId === "email-ownership") {
-      setPhase("entering-email");
+    // Check if TransGate extension is installed
+    const available = await checkExtension();
+    if (!available) {
+      setError("Please install the TransGate extension from Chrome Web Store to continue.");
+      setPhase("failed");
       return;
     }
 
     setPhase("starting");
     try {
-      const result = await Promise.race([
-        start.mutateAsync(templateId),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Request timed out — the backend may be unavailable. Please try again.")), START_TIMEOUT_MS)
-        ),
-      ]);
-      setStartData(result);
-      setPhase("awaiting");
+      const result = await start.mutateAsync(template.zkpassSchemaId);
+      setVerificationId(result.verificationId);
+      setPhase("proving");
     } catch (err) {
       setError((err as Error).message);
       setPhase("failed");
     }
   };
 
-  const handleSendOtp = async () => {
-    if (!email || !selectedTemplate) return;
-    setPhase("sending-otp");
+  const handleLaunchProof = async () => {
+    if (!selectedTemplate || !verificationId) return;
     setError(null);
-    try {
-      const result = await startEmail.mutateAsync({ email, templateId: selectedTemplate });
-      setEmailVerificationId(result.verificationId);
-      setPhase("entering-otp");
-    } catch (err) {
-      setError((err as Error).message);
-      setPhase("entering-email");
-    }
-  };
+    setPhase("proving");
 
-  const handleVerifyOtp = async () => {
-    if (!otpCode || !emailVerificationId) return;
-    setPhase("verifying-otp");
-    setError(null);
     try {
-      await verifyEmail.mutateAsync({ verificationId: emailVerificationId, code: otpCode });
+      const proof = await launchVerification(selectedTemplate.zkpassSchemaId);
+      setPhase("submitting");
+      await submitProof.mutateAsync({ verificationId, proof });
       setPhase("done");
     } catch (err) {
       setError((err as Error).message);
-      setPhase("entering-otp");
+      setPhase("failed");
     }
   };
 
   const handleRetry = () => {
     setPhase("idle");
     setSelectedTemplate(null);
-    setStartData(null);
+    setVerificationId(null);
     setError(null);
-    setEmail("");
-    setOtpCode("");
-    setEmailVerificationId(null);
   };
-
-  const isEmailFlow = selectedTemplate === "email-ownership";
 
   return (
     <div className="page-container">
@@ -201,7 +127,7 @@ export function Web2ProofPage() {
         description="Prove ownership of Web2 accounts and data using zero-knowledge TLS proofs. Your data stays private — only the cryptographic proof is recorded on-chain."
       />
 
-      {phase !== "idle" && phase !== "selecting" && phase !== "entering-email" && phase !== "entering-otp" && (
+      {phase !== "idle" && phase !== "checking-extension" && (
         <Card>
           <Progress phase={phase} />
         </Card>
@@ -211,6 +137,16 @@ export function Web2ProofPage() {
         <ErrorBanner onRetry={phase === "failed" ? handleRetry : undefined}>
           {error}
         </ErrorBanner>
+      )}
+
+      {/* Extension check */}
+      {phase === "checking-extension" && (
+        <Card>
+          <div className="flex items-center gap-3">
+            <Spinner />
+            <span>Checking for TransGate extension...</span>
+          </div>
+        </Card>
       )}
 
       {/* Template selection */}
@@ -224,7 +160,7 @@ export function Web2ProofPage() {
             {config.templates.map((t) => (
               <button
                 key={t.id}
-                onClick={() => handleSelectTemplate(t.id)}
+                onClick={() => handleSelectTemplate(t)}
                 className="web2-proof-template-card"
               >
                 <div className="font-medium">{t.name}</div>
@@ -232,113 +168,57 @@ export function Web2ProofPage() {
               </button>
             ))}
           </div>
-        </Card>
-      )}
-
-      {/* Email input */}
-      {phase === "entering-email" && (
-        <Card>
-          <h3 className="text-lg font-semibold mb-2">Email Ownership Verification</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Enter the email address you want to verify. We'll send a one-time code to confirm ownership.
-          </p>
-          <div className="flex gap-2">
-            <Input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
-              style={{ flex: 1 }}
-            />
-            <Button onClick={handleSendOtp} disabled={!email || startEmail.isPending}>
-              {startEmail.isPending ? <Spinner /> : "Send Code"}
-            </Button>
-          </div>
-          <Button variant="ghost" size="sm" onClick={handleRetry} style={{ marginTop: "var(--space-3)" }}>
-            Back to templates
-          </Button>
-        </Card>
-      )}
-
-      {/* OTP input */}
-      {phase === "entering-otp" && (
-        <Card>
-          <h3 className="text-lg font-semibold mb-2">Enter Verification Code</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            We sent a 6-digit code to <strong>{email}</strong>. Check your inbox and enter it below.
-          </p>
-          <div className="flex gap-2">
-            <Input
-              type="text"
-              inputMode="numeric"
-              placeholder="000000"
-              maxLength={6}
-              value={otpCode}
-              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
-              style={{ flex: 1, fontFamily: "monospace", letterSpacing: "0.2em", fontSize: "1.25rem" }}
-            />
-            <Button onClick={handleVerifyOtp} disabled={otpCode.length !== 6 || verifyEmail.isPending}>
-              {verifyEmail.isPending ? <Spinner /> : "Verify"}
-            </Button>
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => { setPhase("entering-email"); setOtpCode(""); }} style={{ marginTop: "var(--space-3)" }}>
-            Change email
-          </Button>
-        </Card>
-      )}
-
-      {/* Sending OTP spinner */}
-      {phase === "sending-otp" && (
-        <Card>
-          <div className="flex items-center gap-3">
-            <Spinner />
-            <span>Sending verification code to {email}...</span>
-          </div>
-        </Card>
-      )}
-
-      {/* Verifying OTP spinner */}
-      {phase === "verifying-otp" && (
-        <Card>
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Spinner />
-              <span>Verifying code and issuing attestation...</span>
+          {isExtensionAvailable === false && (
+            <div style={{ marginTop: "var(--space-4)" }}>
+              <Callout>
+                <strong>TransGate extension required:</strong> Install the{" "}
+                <a
+                  href="https://chromewebstore.google.com/detail/zkpass-transgate/afkoofjocpbclhnldmmaphappihehpma"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  TransGate Chrome extension
+                </a>{" "}
+                to verify Web2 data with zero-knowledge proofs.
+              </Callout>
             </div>
-          </div>
+          )}
         </Card>
       )}
 
-      {/* Primus initializing */}
+      {/* Starting verification */}
       {phase === "starting" && (
         <Card>
           <div className="flex items-center gap-3">
             <Spinner />
-            <span>Initializing verification task...</span>
+            <span>Initializing verification...</span>
           </div>
         </Card>
       )}
 
-      {/* Primus awaiting */}
-      {phase === "awaiting" && (
+      {/* Awaiting proof */}
+      {phase === "proving" && (
         <Card>
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <Spinner />
-              <span>Verifying with Primus zkTLS network...</span>
+              <span>Waiting for zkTLS proof...</span>
             </div>
             <Callout>
-              The Primus attestor network is generating a zero-knowledge TLS proof.
+              The TransGate extension will open a new tab for you to complete the verification.
+              Log in to your account and click "Start" in the extension popup.
               This may take 30-60 seconds. Do not close this page.
             </Callout>
+            <Button onClick={handleLaunchProof} variant="primary">
+              Launch Verification
+            </Button>
           </div>
         </Card>
       )}
 
-      {/* Verifying proof */}
-      {phase === "verifying" && (
+      {/* Submitting proof */}
+      {phase === "submitting" && (
         <Card>
           <div className="flex items-center gap-3">
             <Spinner />
@@ -356,14 +236,8 @@ export function Web2ProofPage() {
               <span className="font-semibold">Web2 Data Verified</span>
             </div>
             <p className="text-sm text-gray-500">
-              Your {isEmailFlow ? "email ownership" : "web2 data"} proof has been cryptographically verified and recorded on-chain as an attestation.
+              Your web2 data proof has been cryptographically verified and recorded on-chain as an attestation.
             </p>
-            {isEmailFlow && (
-              <div className="text-sm">
-                <span className="text-gray-500">Email: </span>
-                <span className="font-mono">{email}</span>
-              </div>
-            )}
             {status?.provider && (
               <div className="text-sm">
                 <span className="text-gray-500">Provider: </span>
