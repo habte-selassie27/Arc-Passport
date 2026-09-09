@@ -136,12 +136,6 @@ export function useZkPassFlow() {
     const TransgateConnect = (await import("@zkpass/transgate-js-sdk")).default;
     const appId = import.meta.env.VITE_ZKPASS_APP_ID || "";
     const connector = new TransgateConnect(appId);
-
-    const available = await connector.isTransgateAvailable();
-    if (!available) {
-      throw new Error("Please install the TransGate extension from Chrome Web Store");
-    }
-
     const res = await connector.launch(zkpassSchemaId, address);
     return res as ZkPassProofResult;
   }, [address]);

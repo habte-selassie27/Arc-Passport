@@ -75,16 +75,6 @@ export function Web2ProofPage() {
   const handleSelectTemplate = async (template: { id: string; zkpassSchemaId: string }) => {
     setSelectedTemplate(template);
     setError(null);
-    setPhase("checking-extension");
-
-    // Check if TransGate extension is installed
-    const available = await checkExtension();
-    if (!available) {
-      setError("Please install the TransGate extension from Chrome Web Store to continue.");
-      setPhase("failed");
-      return;
-    }
-
     setPhase("starting");
     try {
       const result = await start.mutateAsync(template.zkpassSchemaId);
@@ -171,7 +161,7 @@ export function Web2ProofPage() {
           {isExtensionAvailable === false && (
             <div style={{ marginTop: "var(--space-4)" }}>
               <Callout>
-                <strong>TransGate extension required:</strong> Install the{" "}
+                <strong>Tip:</strong> Install the{" "}
                 <a
                   href="https://chromewebstore.google.com/detail/zkpass-transgate/afkoofjocpbclhnldmmaphappihehpma"
                   target="_blank"
@@ -180,7 +170,7 @@ export function Web2ProofPage() {
                 >
                   TransGate Chrome extension
                 </a>{" "}
-                to verify Web2 data with zero-knowledge proofs.
+                for a smoother experience. Without it, you can scan a QR code on mobile instead.
               </Callout>
             </div>
           )}
