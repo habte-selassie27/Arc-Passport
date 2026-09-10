@@ -31,6 +31,7 @@ import {
   getVerification,
   getVerificationBySubject,
   getVerificationByNullifier,
+  getCompletedSchemas,
   getWeb2ProofStatus,
 } from "../../services/zkpassService.js";
 
@@ -187,5 +188,30 @@ describe("zkpassService", () => {
     expect(record.state).toBe("complete");
     expect(record.claimId).toBe("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     expect(executeContractCall).not.toHaveBeenCalled();
+  });
+
+  it("lists completed template schemas per subject", async () => {
+    const { appendFileSync } = await import("fs");
+    const createdMs = 1789000000000;
+    const seed = (verificationId: string, subject: string, schemaId: string, state: string) =>
+      appendFileSync(
+        STORE,
+        JSON.stringify({
+          verificationId,
+          subject,
+          state,
+          schemaId,
+          createdAt: createdMs,
+          updatedAt: createdMs,
+          expiresAt: createdMs + 3600_000,
+        }) + "\n"
+      );
+    seed("vid-1", SUBJECT_A, "twitter-account", "complete");
+    seed("vid-2", SUBJECT_A, "reddit-account", "complete");
+    seed("vid-3", SUBJECT_A, "twitter-account", "complete"); // duplicate
+    seed("vid-4", SUBJECT_A, "discord-account", "initialized"); // not done
+    seed("vid-5", SUBJECT_B, "twitter-account", "complete"); // other wallet
+    expect(getCompletedSchemas(SUBJECT_A).sort()).toEqual(["reddit-account", "twitter-account"]);
+    expect(getCompletedSchemas(SUBJECT_B)).toEqual(["twitter-account"]);
   });
 });

@@ -85,6 +85,57 @@ export function useWeb2ProofConfig() {
   });
 }
 
+// ── Per-template completion ──
+// The backend session store is ephemeral (redeploys wipe it), so completions
+// are mirrored in localStorage per wallet — done badges survive restarts.
+// The on-chain claim stays the source of truth for validity; this only tracks
+// which templates were completed.
+
+const web2DoneKey = (address: string) => `arcpass:web2-done:${address.toLowerCase()}`;
+
+export function readLocalDoneTemplates(address: string): string[] {
+  try {
+    const raw = localStorage.getItem(web2DoneKey(address));
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function markWeb2TemplateDone(address: string, zkpassSchemaId: string) {
+  try {
+    const next = [...new Set([...readLocalDoneTemplates(address), zkpassSchemaId])];
+    localStorage.setItem(web2DoneKey(address), JSON.stringify(next));
+  } catch {
+    /* private mode — backend list still applies */
+  }
+}
+
+/** Completed template zkpassSchemaIds for a wallet (backend ∪ local mirror). */
+export function useWeb2ProofCompleted(address: `0x${string}` | undefined) {
+  return useQuery({
+    queryKey: ["web2-proof-completed", address?.toLowerCase()],
+    queryFn: async () => {
+      if (!address) return [] as string[];
+      const local = readLocalDoneTemplates(address);
+      try {
+        const res = await fetch(apiUrl(`/web2-proof/completed/${address}`));
+        const json = await res.json();
+        if (!json.success) return local;
+        const remote: unknown = json.data.completed;
+        const ids = Array.isArray(remote)
+          ? remote.filter((x): x is string => typeof x === "string")
+          : [];
+        return [...new Set([...ids, ...local])];
+      } catch {
+        return local;
+      }
+    },
+    enabled: !!address,
+  });
+}
+
 // ── Authenticated flow hooks ──
 
 export function useZkPassFlow() {

@@ -4,6 +4,8 @@ import {
   useZkPassFlow,
   useWeb2ProofStatus,
   useWeb2ProofConfig,
+  useWeb2ProofCompleted,
+  markWeb2TemplateDone,
   type Web2ProofState,
 } from "../hooks/useZkPass";
 import { Card } from "../components/ui/Card";
@@ -41,12 +43,14 @@ export function Web2ProofPage() {
   const { address, start, submitProof, checkExtension, launchVerification, isExtensionAvailable } = useZkPassFlow();
   const { data: status, refetch: refetchStatus } = useWeb2ProofStatus(address);
   const { data: config } = useWeb2ProofConfig();
+  const { data: completed = [], refetch: refetchCompleted } = useWeb2ProofCompleted(address);
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [hasDismissedDone, setHasDismissedDone] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; zkpassSchemaId: string } | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; name: string; zkpassSchemaId: string } | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [doneNotice, setDoneNotice] = useState<string | null>(null);
   const [completedResult, setCompletedResult] = useState<{ txHash?: string; claimId?: string } | null>(null);
 
   // Check extension availability on mount
@@ -76,7 +80,15 @@ export function Web2ProofPage() {
     </div>
   );
 
-  const handleSelectTemplate = async (template: { id: string; zkpassSchemaId: string }) => {
+  const handleSelectTemplate = async (template: { id: string; name: string; zkpassSchemaId: string }) => {
+    // Already completed → banner instead of a redundant verification.
+    if (completed.includes(template.zkpassSchemaId)) {
+      setDoneNotice(
+        `${template.name} is already verified — attestation on record. No need to verify it again.`
+      );
+      return;
+    }
+    setDoneNotice(null);
     setSelectedTemplate(template);
     setHasDismissedDone(false);
     setError(null);
@@ -101,7 +113,9 @@ export function Web2ProofPage() {
       setPhase("submitting");
       const result = await submitProof.mutateAsync({ verificationId, proof });
       setCompletedResult({ txHash: result.txHash, claimId: result.claimId });
+      if (address) markWeb2TemplateDone(address, selectedTemplate.zkpassSchemaId);
       await refetchStatus();
+      await refetchCompleted();
       setPhase("done");
     } catch (err) {
       setError((err as Error).message);
@@ -115,8 +129,15 @@ export function Web2ProofPage() {
     setSelectedTemplate(null);
     setVerificationId(null);
     setError(null);
+    setDoneNotice(null);
     setCompletedResult(null);
   };
+
+  // Platform name for the done card: the just-finished template, falling back
+  // to the most recently completed one (e.g. after a reload).
+  const doneTemplateName =
+    selectedTemplate?.name ??
+    config?.templates.find((t) => t.zkpassSchemaId === completed[completed.length - 1])?.name;
 
   return (
     <div className="page-container">
@@ -155,17 +176,37 @@ export function Web2ProofPage() {
           <p className="text-sm text-gray-500 mb-4">
             Choose what Web2 data you want to cryptographically verify. Your raw data never leaves your device.
           </p>
+          {doneNotice && (
+            <div style={{ marginBottom: "var(--space-4)" }}>
+              <Callout type="tip">{doneNotice}</Callout>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {config.templates.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => handleSelectTemplate(t)}
-                className="web2-proof-template-card"
-              >
-                <div className="font-medium">{t.name}</div>
-                <div className="text-sm text-gray-500">{t.description}</div>
-              </button>
-            ))}
+            {config.templates.map((t) => {
+              const done = completed.includes(t.zkpassSchemaId);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => handleSelectTemplate(t)}
+                  className="web2-proof-template-card"
+                  style={done ? { opacity: 0.75 } : undefined}
+                  title={done ? "Already verified" : undefined}
+                >
+                  <div className="font-medium flex items-center gap-2">
+                    {t.name}
+                    {done && (
+                      <span
+                        className="chip"
+                        style={{ background: "rgba(0,229,160,0.15)", color: "#00E5A0", fontSize: "0.65rem" }}
+                      >
+                        ✓ Done
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-500">{t.description}</div>
+                </button>
+              );
+            })}
           </div>
           {isExtensionAvailable === false && (
             <div style={{ marginTop: "var(--space-4)" }}>
@@ -234,6 +275,11 @@ export function Web2ProofPage() {
               <span className="text-xl">{"\u2713"}</span>
               <span className="font-semibold">Web2 Data Verified</span>
             </div>
+            {doneTemplateName && (
+              <p className="text-sm font-medium" style={{ color: "var(--color-verified, #00E5A0)" }}>
+                You have finished ZK attestation — {doneTemplateName}
+              </p>
+            )}
             <p className="text-sm text-gray-500">
               Your web2 data proof has been cryptographically verified and recorded on-chain as an attestation.
             </p>

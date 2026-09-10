@@ -252,6 +252,20 @@ export function getVerificationByNullifier(nullifier: string): Web2ProofVerifica
   );
 }
 
+/** Schema IDs (template zkpassSchemaIds) this subject has completed. Advisory:
+ * the JSONL store is ephemeral on hosted backends — the on-chain claim is
+ * the source of truth for validity; this only tracks per-template progress. */
+export function getCompletedSchemas(subject: string): string[] {
+  const lower = subject.toLowerCase();
+  const seen = new Set<string>();
+  for (const r of readAll()) {
+    if (r.subject.toLowerCase() === lower && r.state === "complete") {
+      seen.add(r.schemaId);
+    }
+  }
+  return [...seen];
+}
+
 // ── Core Service ──
 
 export async function startVerification(

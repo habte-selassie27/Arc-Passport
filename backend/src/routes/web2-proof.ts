@@ -6,6 +6,7 @@ import {
   startVerification,
   handleProofSubmission,
   getVerification,
+  getCompletedSchemas,
   getWeb2ProofStatus,
 } from "../services/zkpassService.js";
 import { SOCIAL_SCHEMAS } from "../constants/schemas.js";
@@ -87,6 +88,21 @@ router.get("/verify/:address", async (req, res) => {
     }
     const status = await getWeb2ProofStatus(address);
     res.json({ success: true, data: { subject: address, ...status } });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// Public per-template progress — schemaIds (template zkpassSchemaIds) this
+// wallet has completed. Advisory only (session store is ephemeral); the
+// on-chain claim remains the source of truth for validity.
+router.get("/completed/:address", (req, res) => {
+  try {
+    const { address } = req.params;
+    if (!isValidAddress(address)) {
+      throw Errors.InvalidSubject(address);
+    }
+    res.json({ success: true, data: { subject: address, completed: getCompletedSchemas(address) } });
   } catch (err) {
     handleError(res, err);
   }

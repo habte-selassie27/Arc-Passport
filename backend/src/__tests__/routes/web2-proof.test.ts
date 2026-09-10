@@ -27,6 +27,7 @@ vi.mock("../../services/zkpassService.js", () => ({
     verified: false,
     isHolder: false,
   })),
+  getCompletedSchemas: vi.fn(() => ["twitter-account", "reddit-account"]),
 }));
 
 import web2ProofRoutes from "../../routes/web2-proof.js";
@@ -92,6 +93,20 @@ describe("GET /web2-proof/verify/:address", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.data.verified).toBe(false);
+  });
+});
+
+describe("GET /web2-proof/completed/:address", () => {
+  it("returns completed template schemas", async () => {
+    const res = await fetch(`${baseUrl}/web2-proof/completed/0x1111111111111111111111111111111111111111`);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.completed).toEqual(["twitter-account", "reddit-account"]);
+  });
+
+  it("rejects an invalid address", async () => {
+    const res = await fetch(`${baseUrl}/web2-proof/completed/not-an-address`);
+    expect(res.status).toBe(400);
   });
 });
 
