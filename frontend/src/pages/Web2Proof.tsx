@@ -47,6 +47,7 @@ export function Web2ProofPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; zkpassSchemaId: string } | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [completedResult, setCompletedResult] = useState<{ txHash?: string; claimId?: string } | null>(null);
 
   // Check extension availability on mount
   useEffect(() => {
@@ -98,9 +99,8 @@ export function Web2ProofPage() {
     try {
       const proof = await launchVerification(selectedTemplate.zkpassSchemaId);
       setPhase("submitting");
-      await submitProof.mutateAsync({ verificationId, proof });
-      // Refresh so the done card shows the just-completed template's
-      // provider/expiry instead of the previous template's stale status.
+      const result = await submitProof.mutateAsync({ verificationId, proof });
+      setCompletedResult({ txHash: result.txHash, claimId: result.claimId });
       await refetchStatus();
       setPhase("done");
     } catch (err) {
@@ -115,6 +115,7 @@ export function Web2ProofPage() {
     setSelectedTemplate(null);
     setVerificationId(null);
     setError(null);
+    setCompletedResult(null);
   };
 
   return (
@@ -246,6 +247,19 @@ export function Web2ProofPage() {
               <div className="text-sm">
                 <span className="text-gray-500">Expires: </span>
                 <span>{new Date(status.expiresAt * 1000).toLocaleDateString()}</span>
+              </div>
+            )}
+            {completedResult?.txHash && (
+              <div className="text-sm">
+                <span className="text-gray-500">Transaction: </span>
+                <a
+                  href={`https://testnet.arcscan.app/tx/${completedResult.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-blue-500 hover:underline"
+                >
+                  {completedResult.txHash.slice(0, 10)}...{completedResult.txHash.slice(-8)}
+                </a>
               </div>
             )}
             <Button onClick={handleRetry} variant="ghost">

@@ -486,6 +486,16 @@ function VaultTab() {
   const vault = useZkVault();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [showManual, setShowManual] = useState(false);
+  const [manual, setManual] = useState({
+    documentType: "national_id",
+    documentNumber: "",
+    surname: "",
+    givenNames: "",
+    nationality: "",
+    birthDate: "",
+    expiryDate: "",
+  });
   // Public badge endpoint — NO wallet signature, safe to query automatically.
   // NEVER auto-call vault.refreshStatus() (signed) in an effect/useQuery:
   // each call prompts a wallet signature, and an effect depending on an
@@ -499,6 +509,7 @@ function VaultTab() {
   const onFile = (f: File | null) => {
     setFile(f);
     setPreview(f ? URL.createObjectURL(f) : null);
+    setShowManual(false);
     vault.reset();
   };
 
@@ -510,6 +521,19 @@ function VaultTab() {
     if (!file) return;
     try {
       await vault.commitVault(file);
+      refreshBadge();
+    } catch {
+      /* error already surfaced via vault.error */
+    }
+  };
+
+  const handleManualCommit = async () => {
+    if (!file || !manual.documentNumber.trim()) return;
+    try {
+      const fields: Record<string, string> = Object.fromEntries(
+        Object.entries(manual).map(([k, v]) => [k, v.trim()])
+      );
+      await vault.commitVault(file, fields);
       refreshBadge();
     } catch {
       /* error already surfaced via vault.error */
@@ -659,6 +683,64 @@ function VaultTab() {
 
         {vault.error && (
           <div style={{ marginTop: "var(--space-3)" }}><ErrorBanner>{vault.error}</ErrorBanner></div>
+        )}
+
+        {file && !vault.isBusy && (
+          <div style={{ marginTop: "var(--space-3)" }}>
+            <Button variant="ghost" size="sm" onClick={() => setShowManual((s) => !s)}>
+              {showManual ? "Hide manual entry" : "No MRZ on your document? Enter details manually"}
+            </Button>
+            {showManual && (
+              <div className="grid gap-3" style={{ marginTop: "var(--space-3)" }}>
+                <p className="t-xs c-subtle">
+                  US driver&apos;s licenses and state IDs have no ICAO MRZ — OCR can&apos;t read them.
+                  Enter the fields yourself; they&apos;re still encrypted on-device before leaving the browser.
+                </p>
+                <div>
+                  <label className="t-xs c-subtle" style={{ display: "block", marginBottom: "var(--space-1)" }}>Document Type</label>
+                  <select
+                    className="select"
+                    value={manual.documentType}
+                    onChange={(e) => setManual((m) => ({ ...m, documentType: e.target.value }))}
+                  >
+                    <option value="passport">Passport</option>
+                    <option value="national_id">National ID</option>
+                    <option value="drivers_license">Driver&apos;s License</option>
+                    <option value="residence_permit">Residence Permit</option>
+                  </select>
+                </div>
+                {([
+                  ["documentNumber", "Document Number *"],
+                  ["surname", "Surname"],
+                  ["givenNames", "Given Names"],
+                  ["nationality", "Nationality (3-letter code)"],
+                  ["birthDate", "Birth Date"],
+                  ["expiryDate", "Expiry Date"],
+                ] as const).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="t-xs c-subtle" style={{ display: "block", marginBottom: "var(--space-1)" }}>{label}</label>
+                    <Input
+                      mono={key === "documentNumber"}
+                      type="text"
+                      value={manual[key]}
+                      onChange={(e) => setManual((m) => ({ ...m, [key]: e.target.value }))}
+                      placeholder={label}
+                    />
+                  </div>
+                ))}
+                <div>
+                  <Button
+                    variant="primary"
+                    onClick={() => void handleManualCommit()}
+                    disabled={!manual.documentNumber.trim() || vault.isBusy}
+                    loading={vault.isBusy}
+                  >
+                    Encrypt &amp; Commit Manually
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="flex gap-2" style={{ marginTop: "var(--space-4)" }}>
