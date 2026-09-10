@@ -85,6 +85,8 @@ export function useZkVault() {
   /**
    * Full flow: file → OCR → encrypt → IPFS → on-chain commitment.
    * `manualFields` skips OCR (fallback when the MRZ can't be read).
+   * USER-INITIATED ONLY — prompts wallet signatures. Never call from an
+   * effect, render path, or React Query queryFn (that queues 1000s of prompts).
    */
   const commitVault = useCallback(
     async (file: File, manualFields?: Record<string, string>) => {
@@ -96,16 +98,17 @@ export function useZkVault() {
         // 1. Extract fields (OCR or manual)
         let fields: Record<string, string>;
         let checks: { name: string; valid: boolean }[] = [];
+        let ocr: MrzResult | null = null;
         if (manualFields) {
           fields = manualFields;
           setMrz(null);
         } else {
           setPhase("ocr");
           setProgress(0);
-          const result = await extractMrzFromImage(file, setProgress);
-          setMrz(result);
-          fields = result.fields;
-          checks = result.checks;
+          ocr = await extractMrzFromImage(file, setProgress);
+          setMrz(ocr);
+          fields = ocr.fields;
+          checks = ocr.checks;
         }
         if (!fields.documentNumber) {
           throw new Error("Document number missing from extracted fields");
@@ -142,17 +145,23 @@ export function useZkVault() {
         });
         setCommitResult(result);
         setPhase("done");
-        return { result, mrz: mrz, checks };
+        return { result, mrz: ocr, checks };
       } catch (err) {
         setPhase("error");
         setError((err as Error).message);
         throw err;
       }
     },
-    [address, signMessageAsync, mrz]
+    [address, signMessageAsync]
   );
 
-  /** Fetch on-chain commitment status for the connected wallet. */
+  /**
+   * Fetch on-chain commitment status for the connected wallet.
+   * SIGNED — prompts exactly one wallet signature per call.
+   * USER-INITIATED ONLY: call from click handlers, never from useEffect /
+   * useQuery / render. Auto-firing this (e.g. in an effect keyed on an
+   * unstable callback) queues hundreds of signature prompts.
+   */
   const refreshStatus = useCallback(async () => {
     if (!address) return null;
     return signedFetch<VaultStatus>({
@@ -162,7 +171,8 @@ export function useZkVault() {
     });
   }, [address, signMessageAsync]);
 
-  /** Fetch the encrypted blob and decrypt locally (re-derives the key). */
+  /** Fetch the encrypted blob and decrypt locally (re-derives the key).
+   * USER-INITIATED ONLY — prompts a wallet signature. Never auto-call. */
   const decryptVault = useCallback(
     async (vaultCid: string): Promise<VaultPayload> => {
       if (!address) throw new Error("Wallet not connected");
@@ -218,7 +228,8 @@ export interface VaultBadge {
   expiresAt?: number;
 }
 
-/** Public vault-attestation badge data for any address (used on Passport pages). */
+/** Public vault-attestation badge data for any address (used on Passport pages).
+ * Unsigned GET — the ONLY vault status safe to auto-fetch (effects, React Query). */
 export function useVaultBadge(address: `0x${string}` | undefined) {
   return useQuery({
     queryKey: ["zk-vault-badge", address?.toLowerCase()],
@@ -230,6 +241,7 @@ export function useVaultBadge(address: `0x${string}` | undefined) {
       return json.data as VaultBadge;
     },
     staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 

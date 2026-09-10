@@ -6,10 +6,10 @@
  * What it does NOT do: generate ZK proofs (that happens on the user's device).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
 import { useZKVerifiers, useZKStats, useZKProofStatus, useSubmitPassportProof, useSubmitAttributeProof, useVerifyZKProof } from "../hooks/useZKProof";
-import { useZkVault, type VaultStatus } from "../hooks/useZkVault";
+import { useZkVault, useVaultBadge } from "../hooks/useZkVault";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -486,24 +486,15 @@ function VaultTab() {
   const vault = useZkVault();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [status, setStatus] = useState<VaultStatus | null>(null);
-  const [statusLoading, setStatusLoading] = useState(false);
-
-  const loadStatus = useCallback(async () => {
-    if (!address) return;
-    setStatusLoading(true);
-    try {
-      setStatus(await vault.refreshStatus());
-    } catch {
-      setStatus(null);
-    } finally {
-      setStatusLoading(false);
-    }
-  }, [address, vault]);
-
-  useEffect(() => {
-    void loadStatus();
-  }, [loadStatus]);
+  // Public badge endpoint — NO wallet signature, safe to query automatically.
+  // NEVER auto-call vault.refreshStatus() (signed) in an effect/useQuery:
+  // each call prompts a wallet signature, and an effect depending on an
+  // unstable callback identity re-fires every render → 1000 queued prompts.
+  const {
+    data: badge,
+    isLoading: statusLoading,
+    refetch: refetchBadge,
+  } = useVaultBadge(address);
 
   const onFile = (f: File | null) => {
     setFile(f);
@@ -511,20 +502,27 @@ function VaultTab() {
     vault.reset();
   };
 
+  const refreshBadge = useCallback(() => {
+    void refetchBadge();
+  }, [refetchBadge]);
+
   const handleCommit = async () => {
     if (!file) return;
     try {
       await vault.commitVault(file);
-      void loadStatus();
+      refreshBadge();
     } catch {
       /* error already surfaced via vault.error */
     }
   };
 
   const handleDecrypt = async () => {
-    const cid = status?.vaultCid || vault.commitResult?.vaultCid;
-    if (!cid) return;
+    if (!address) return;
     try {
+      // CID is only in the signed (owner) status — user-initiated, so the
+      // signature prompt is expected. Key derivation also signs by design.
+      const cid = vault.commitResult?.vaultCid ?? (await vault.refreshStatus())?.vaultCid;
+      if (!cid) throw new Error("No vault commitment found for this wallet");
       await vault.decryptVault(cid);
     } catch {
       /* error already surfaced via vault.error */
@@ -543,36 +541,32 @@ function VaultTab() {
         commitment — never your data.
       </Callout>
 
-      {/* Current commitment status */}
+      {/* Current commitment status (public badge — no signature needed) */}
       <Card style={{ marginTop: "var(--space-4)" }}>
         <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-2)", gap: "var(--space-2)" }}>
           <h3 className="t-sm" style={{ fontWeight: 600 }}>Vault Status</h3>
-          <Button variant="ghost" size="sm" onClick={() => void loadStatus()} loading={statusLoading}>
+          <Button variant="ghost" size="sm" onClick={refreshBadge} loading={statusLoading}>
             Refresh
           </Button>
         </div>
-        {!status || !status.committed ? (
+        {!badge || !badge.committed ? (
           <p className="t-sm c-subtle">No vault committed for this wallet yet.</p>
         ) : (
           <>
             <div className="data-row">
               <span className="data-row__label">On-chain</span>
-              <span className="t-sm" style={{ color: status.isValid ? "var(--color-verified)" : "var(--color-danger)" }}>
-                {status.isValid ? "✓ Valid attestation" : "Attestation not valid/expired"}
+              <span className="t-sm" style={{ color: badge.isValid ? "var(--color-verified)" : "var(--color-danger)" }}>
+                {badge.isValid ? "✓ Valid attestation" : "Attestation not valid/expired"}
               </span>
             </div>
             <div className="data-row">
               <span className="data-row__label">Document</span>
-              <span className="t-sm">{status.documentType}</span>
+              <span className="t-sm">{badge.documentType}</span>
             </div>
-            <div className="data-row">
-              <span className="data-row__label">Vault CID</span>
-              <span className="mono t-xs" style={{ wordBreak: "break-all" }}>{status.vaultCid}</span>
-            </div>
-            {status.committedAt && (
+            {badge.committedAt && (
               <div className="data-row">
                 <span className="data-row__label">Committed</span>
-                <span className="t-sm">{new Date(status.committedAt * 1000).toLocaleString()}</span>
+                <span className="t-sm">{new Date(badge.committedAt * 1000).toLocaleString()}</span>
               </div>
             )}
             <Button
@@ -582,7 +576,7 @@ function VaultTab() {
               onClick={() => void handleDecrypt()}
               loading={vault.phase === "key" || vault.phase === "encrypting"}
             >
-              🔓 Decrypt &amp; view (local only)
+              🔓 Decrypt &amp; view (signs once, local only)
             </Button>
           </>
         )}
