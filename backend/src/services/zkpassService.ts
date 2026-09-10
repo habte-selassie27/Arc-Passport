@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync, appendFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { keccak256, encodePacked, recoverAddress, hashMessage } from "viem";
+import { keccak256, encodePacked, encodeAbiParameters, stringToHex, recoverAddress, hashMessage, toBytes } from "viem";
 import { publicClient } from "./arcService.js";
 import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
 import { executeContractCall } from "./circleService.js";
@@ -122,30 +122,40 @@ async function recoverClaimId(
 }
 
 // ── Signature Verification ──
-
-function stringToHex(str: string): string {
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(str);
-  return "0x" + Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
-}
+// Must mirror @zkpass/transgate-js-sdk checkTaskInfoForEVM /
+// verifyEVMMessageSignature exactly:
+//   taskHex = web3.utils.stringToHex(taskId)
+//   schemaHex = web3.utils.stringToHex(schemaId)
+//   encoded = abi.encode(['bytes32','bytes32','address'], ...)
+//   hash = keccak256(encoded)
+// Using encodePacked here produces a different hash (84 vs 96 bytes)
+// and always recovers the wrong address.
+//
+// CRITICAL: the SDK then calls web3.eth.accounts.recover(hash, signature),
+// which applies hashMessage() first — i.e. recovery is over the EIP-191
+// prefixed hash keccak256("\x19Ethereum Signed Message:\n32" ‖ hash).
+// viem's recoverAddress() recovers over the RAW hash, so passing paramsHash
+// directly always recovers the wrong address ("Invalid allocator signature").
+// We must wrap with hashMessage({ raw }) to match the SDK.
 
 async function verifyAllocatorSignature(proof: ZkPassProofResult, schemaId: string): Promise<boolean> {
   try {
     const taskIdHex = stringToHex(proof.taskId);
     const schemaIdHex = stringToHex(schemaId);
 
-    // Encode parameters: (bytes32, bytes32, address)
-    const encoded = encodePacked(
-      ["bytes32", "bytes32", "address"],
+    // abi.encode equivalent — NOT encodePacked
+    const encoded = encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "bytes32" }, { type: "address" }],
       [taskIdHex as `0x${string}`, schemaIdHex as `0x${string}`, proof.validatorAddress as `0x${string}`]
     );
 
-    // Hash the encoded parameters
+    // Hash the encoded parameters, then EIP-191 prefix (matches web3 recover)
     const paramsHash = keccak256(encoded);
+    const prefixedHash = hashMessage({ raw: toBytes(paramsHash) });
 
     // Recover the signer address
     const recovered = await recoverAddress({
-      hash: paramsHash,
+      hash: prefixedHash,
       signature: proof.allocatorSignature as `0x${string}`,
     });
 
@@ -160,30 +170,28 @@ async function verifyValidatorSignature(proof: ZkPassProofResult, schemaId: stri
     const taskIdHex = stringToHex(proof.taskId);
     const schemaIdHex = stringToHex(schemaId);
 
-    // Encode parameters: (bytes32, bytes32, bytes32, bytes32)
-    const types: string[] = ["bytes32", "bytes32", "bytes32", "bytes32"];
-    const values: string[] = [
-      taskIdHex,
-      schemaIdHex,
-      proof.uHash,
-      proof.publicFieldsHash,
+    // abi.encode equivalent — NOT encodePacked (see above)
+    const types = [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }] as const;
+    const baseValues = [
+      taskIdHex as `0x${string}`,
+      schemaIdHex as `0x${string}`,
+      proof.uHash as `0x${string}`,
+      proof.publicFieldsHash as `0x${string}`,
     ];
 
-    // Add recipient if present
-    if (proof.recipient) {
-      types.push("address");
-      values.push(proof.recipient);
-    }
+    const encoded = proof.recipient
+      ? encodeAbiParameters(
+          [...types, { type: "address" }] as const,
+          [...baseValues, proof.recipient as `0x${string}`] as any
+        )
+      : encodeAbiParameters(types, baseValues as any);
 
-    const encoded = encodePacked(
-      types as any,
-      values.map(v => v as `0x${string}`)
-    );
-
+    // EIP-191 prefix — matches web3 accounts.recover in verifyEVMMessageSignature
     const paramsHash = keccak256(encoded);
+    const prefixedHash = hashMessage({ raw: toBytes(paramsHash) });
 
     const recovered = await recoverAddress({
-      hash: paramsHash,
+      hash: prefixedHash,
       signature: proof.validatorSignature as `0x${string}`,
     });
 
