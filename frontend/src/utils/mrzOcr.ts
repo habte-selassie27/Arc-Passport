@@ -32,11 +32,24 @@ export async function extractMrzFromImage(
   onProgress?: (p: number) => void
 ): Promise<MrzResult> {
   const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("eng", 1, {
-    logger: (m: { status: string; progress: number }) => {
-      if (onProgress && m.status === "recognizing text") onProgress(m.progress);
-    },
-  });
+  let worker: Awaited<ReturnType<typeof createWorker>>;
+  try {
+    worker = await createWorker("eng", 1, {
+      logger: (m: { status: string; progress: number }) => {
+        if (onProgress && m.status === "recognizing text") onProgress(m.progress);
+      },
+    });
+  } catch (err) {
+    // tesseract.js spawns `new Worker(blobURL)` + importScripts from
+    // cdn.jsdelivr.net. A missing `worker-src blob:` CSP directive (or a
+    // blocked CDN) surfaces here as "Failed to construct 'Worker'".
+    console.error("[mrzOcr] OCR worker failed to start", err);
+    throw new MrzError(
+      "Document scanner failed to start — the browser blocked the on-device text reader. " +
+        "Reload the page (the site must allow `worker-src 'self' blob:` and cdn.jsdelivr.net in its Content-Security-Policy). " +
+        "If it persists, try a different browser."
+    );
+  }
 
   let text: string;
   try {
@@ -48,7 +61,7 @@ export async function extractMrzFromImage(
     const { data } = await worker.recognize(file);
     text = data.text;
   } finally {
-    await worker.terminate();
+    await worker.terminate().catch(() => undefined);
   }
 
   const result = parseMrzText(text);
