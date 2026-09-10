@@ -13,6 +13,18 @@ vi.mock("../../services/arcService.js", () => ({
   publicClient: { readContract: (cfg: any) => readContract(cfg) },
 }));
 
+// Signature checks recover against the zkPass allocator/validator addresses.
+// Mock only address recovery (everything else stays real) so proof
+// submissions can pass verification with a matching validator address.
+const ALLOCATOR = "0x19a567b3b212a5b35bA0E3B600FbEd5c2eE9083d";
+vi.mock("viem", async () => {
+  const actual = await vi.importActual<typeof import("viem")>("viem");
+  return {
+    ...actual,
+    recoverAddress: async () => "0x19a567b3b212a5b35bA0E3B600FbEd5c2eE9083d",
+  };
+});
+
 import {
   startVerification,
   handleProofSubmission,
@@ -155,5 +167,25 @@ describe("zkpassService", () => {
     // Attestation TTL (1y), not the 1h session window.
     expect(status.expiresAt!).toBe(Math.floor(createdMs / 1000) + 365 * 24 * 60 * 60);
     expect(status.checkedAt!).toBe(Math.floor(createdMs / 1000));
+  });
+
+  it("skips the on-chain attest when a valid claim already exists", async () => {
+    // Regression: every web2 template attests under one on-chain schema from
+    // one issuer wallet, so re-verifying reverted with
+    // ArcPass__ActiveClaimExists — surfaced as "Circle: transaction failed".
+    // A still-valid claim must complete the session with no new Circle tx.
+    // (Default mocks return a valid active claim: getActiveClaim → 0xaaaa…,
+    // isValid → true. IDs are 32-char strings like the real zkPass
+    // taskId/schemaId — stringToHex must yield exactly bytes32.)
+    const schemaId = "43194186dd1f44a89f727ba64826c961";
+    const { verificationId } = await startVerification(SUBJECT_A, schemaId);
+    const record = await handleProofSubmission(verificationId, SUBJECT_A, {
+      ...MOCK_PROOF,
+      taskId: "088b83be67643d09662210ef7adddd9d",
+      validatorAddress: ALLOCATOR,
+    });
+    expect(record.state).toBe("complete");
+    expect(record.claimId).toBe("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(executeContractCall).not.toHaveBeenCalled();
   });
 });

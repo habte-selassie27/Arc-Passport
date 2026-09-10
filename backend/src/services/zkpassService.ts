@@ -127,6 +127,24 @@ async function recoverClaimId(
   return undefined;
 }
 
+/** On-chain timestamps for an existing claim (best-effort, advisory). */
+async function readClaimTimes(
+  claimId: string
+): Promise<{ issuedAt: number; expiresAt: number } | undefined> {
+  if (!process.env.ATTESTATION_REGISTRY_ADDRESS) return undefined;
+  try {
+    const claim = (await publicClient.readContract({
+      address: process.env.ATTESTATION_REGISTRY_ADDRESS as `0x${string}`,
+      abi: ATTESTATION_REGISTRY_ABI,
+      functionName: "getClaim",
+      args: [claimId as `0x${string}`],
+    })) as unknown as [unknown, unknown, unknown, unknown, unknown, bigint, bigint];
+    return { issuedAt: Number(claim[5]), expiresAt: Number(claim[6]) };
+  } catch {
+    return undefined;
+  }
+}
+
 // ── Signature Verification ──
 // Must mirror @zkpass/transgate-js-sdk checkTaskInfoForEVM /
 // verifyEVMMessageSignature exactly:
@@ -333,6 +351,26 @@ export async function handleProofSubmission(
   }
   if (!process.env.ATTESTATION_REGISTRY_ADDRESS) {
     throw Errors.IssuerNotConfigured("web2-proof", "ATTESTATION_REGISTRY_ADDRESS");
+  }
+
+  // Idempotent re-verification: every web2 template attests under the same
+  // on-chain schema (WEB2_DATA_PROOF_ID) from the same issuer wallet, and the
+  // registry allows only one active claim per (subject, schemaId, issuer).
+  // The JSONL session store is ephemeral on hosted backends (redeploys wipe
+  // it), so without this check a returning wallet re-attests and reverts with
+  // ArcPass__ActiveClaimExists — surfaced as "Circle: transaction failed".
+  // Re-check the on-chain source of truth: a still-valid claim completes the
+  // session with no new transaction.
+  const priorClaimId = await recoverClaimId(subject, WEB2_DATA_PROOF_ID);
+  if (priorClaimId && (await isClaimValidOnChain(priorClaimId))) {
+    const times = await readClaimTimes(priorClaimId);
+    record.state = "complete";
+    record.claimId = priorClaimId;
+    if (times && times.issuedAt > 0) record.attestedAt = times.issuedAt;
+    if (times && times.expiresAt > 0) record.attestationExpiresAt = times.expiresAt;
+    record.updatedAt = Date.now();
+    upsert(record);
+    return record;
   }
 
   const checkedAt = Math.floor(Date.now() / 1000);
