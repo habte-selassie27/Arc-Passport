@@ -50,6 +50,12 @@ export interface VaultPayload {
   docType: string;
   fields: Record<string, string>;
   createdAt: number;
+  /** Optional downscaled JPEG data-URLs (front/back of document), AES-GCM
+   *  encrypted along with everything else. Never part of fieldsHash. */
+  images?: {
+    front?: string;
+    back?: string;
+  };
 }
 
 export interface EncryptedVault {
@@ -92,6 +98,31 @@ export function computeFieldsHash(fields: Record<string, string>): `0x${string}`
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Downscale an image file to a JPEG data-URL (max dimension `maxDim`,
+ * quality 0.8) so encrypted vaults stay small on IPFS. Runs fully local.
+ */
+export async function downscaleToDataUrl(
+  file: File,
+  maxDim = 1024
+): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    throw new Error("Canvas 2D not available");
+  }
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.8);
+}
 
 /** UTF-8 encode into a plain ArrayBuffer-backed Uint8Array (WebCrypto-safe). */
 function utf8(s: string): Uint8Array<ArrayBuffer> {

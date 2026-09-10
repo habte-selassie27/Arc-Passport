@@ -21,6 +21,7 @@ import {
   encryptVaultPayload,
   decryptVaultPayload,
   computeFieldsHash,
+  downscaleToDataUrl,
   type EncryptedVault,
   type VaultPayload,
 } from "../utils/vaultCrypto";
@@ -85,11 +86,17 @@ export function useZkVault() {
   /**
    * Full flow: file → OCR → encrypt → IPFS → on-chain commitment.
    * `manualFields` skips OCR (fallback when the MRZ can't be read).
+   * `images` optionally embeds downscaled front/back photos (encrypted,
+   * fieldsHash stays over `fields` only so commitment semantics don't change).
    * USER-INITIATED ONLY — prompts wallet signatures. Never call from an
    * effect, render path, or React Query queryFn (that queues 1000s of prompts).
    */
   const commitVault = useCallback(
-    async (file: File, manualFields?: Record<string, string>) => {
+    async (
+      file: File,
+      manualFields?: Record<string, string>,
+      images?: { front?: File; back?: File }
+    ) => {
       if (!address) throw new Error("Wallet not connected");
       setError(null);
       setDecrypted(null);
@@ -118,13 +125,17 @@ export function useZkVault() {
         setPhase("key");
         const key = await deriveVaultKey(address, signMessageAsync);
 
-        // 3. Encrypt
+        // 3. Encrypt (fields + optional downscaled front/back photos)
         setPhase("encrypting");
+        const embeddedImages: { front?: string; back?: string } = {};
+        if (images?.front) embeddedImages.front = await downscaleToDataUrl(images.front);
+        if (images?.back) embeddedImages.back = await downscaleToDataUrl(images.back);
         const payload: VaultPayload = {
           v: 1,
           docType: fields.documentType || "document",
           fields,
           createdAt: Math.floor(Date.now() / 1000),
+          ...(Object.keys(embeddedImages).length > 0 ? { images: embeddedImages } : {}),
         };
         const blob: EncryptedVault = await encryptVaultPayload(key, payload);
 

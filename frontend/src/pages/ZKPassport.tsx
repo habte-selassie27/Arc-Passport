@@ -484,8 +484,10 @@ const VAULT_PHASE_LABEL: Record<string, string> = {
 function VaultTab() {
   const { address } = useAccount();
   const vault = useZkVault();
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [front, setFront] = useState<File | null>(null);
+  const [back, setBack] = useState<File | null>(null);
+  const [frontPreview, setFrontPreview] = useState<string | null>(null);
+  const [backPreview, setBackPreview] = useState<string | null>(null);
   const [showManual, setShowManual] = useState(false);
   const [manual, setManual] = useState({
     documentType: "national_id",
@@ -506,11 +508,21 @@ function VaultTab() {
     refetch: refetchBadge,
   } = useVaultBadge(address);
 
-  const onFile = (f: File | null) => {
-    setFile(f);
-    setPreview(f ? URL.createObjectURL(f) : null);
+  const onFile = (slot: "front" | "back", f: File | null) => {
+    if (slot === "front") {
+      setFront(f);
+      setFrontPreview(f ? URL.createObjectURL(f) : null);
+    } else {
+      setBack(f);
+      setBackPreview(f ? URL.createObjectURL(f) : null);
+    }
     setShowManual(false);
     vault.reset();
+  };
+
+  const clearFiles = () => {
+    onFile("front", null);
+    onFile("back", null);
   };
 
   const refreshBadge = useCallback(() => {
@@ -518,9 +530,15 @@ function VaultTab() {
   }, [refetchBadge]);
 
   const handleCommit = async () => {
-    if (!file) return;
+    // MRZ lives on the back side — OCR that, fall back to front if it's the only photo.
+    const ocrFile = back ?? front;
+    if (!ocrFile) return;
     try {
-      await vault.commitVault(file);
+      await vault.commitVault(
+        ocrFile,
+        undefined,
+        { ...(front ? { front } : {}), ...(back ? { back } : {}) }
+      );
       refreshBadge();
     } catch {
       /* error already surfaced via vault.error */
@@ -528,12 +546,17 @@ function VaultTab() {
   };
 
   const handleManualCommit = async () => {
-    if (!file || !manual.documentNumber.trim()) return;
+    const ocrFile = back ?? front;
+    if (!ocrFile || !manual.documentNumber.trim()) return;
     try {
       const fields: Record<string, string> = Object.fromEntries(
         Object.entries(manual).map(([k, v]) => [k, v.trim()])
       );
-      await vault.commitVault(file, fields);
+      await vault.commitVault(
+        ocrFile,
+        fields,
+        { ...(front ? { front } : {}), ...(back ? { back } : {}) }
+      );
       refreshBadge();
     } catch {
       /* error already surfaced via vault.error */
@@ -616,6 +639,22 @@ function VaultTab() {
                 </div>
               ))}
             </div>
+            {vault.decrypted.images && (vault.decrypted.images.front || vault.decrypted.images.back) && (
+              <div className="grid gap-3 sm:grid-cols-2" style={{ marginTop: "var(--space-3)" }}>
+                {vault.decrypted.images.front && (
+                  <div>
+                    <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-1)" }}>Front side</p>
+                    <img src={vault.decrypted.images.front} alt="decrypted front side" style={{ maxHeight: 180, borderRadius: 8 }} />
+                  </div>
+                )}
+                {vault.decrypted.images.back && (
+                  <div>
+                    <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-1)" }}>Back side</p>
+                    <img src={vault.decrypted.images.back} alt="decrypted back side" style={{ maxHeight: 180, borderRadius: 8 }} />
+                  </div>
+                )}
+              </div>
+            )}
           </Card>
         )}
       </Card>
@@ -624,34 +663,45 @@ function VaultTab() {
       <Card style={{ marginTop: "var(--space-4)" }}>
         <h3 className="t-sm" style={{ fontWeight: 600, marginBottom: "var(--space-3)" }}>Scan or Upload Document</h3>
         <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-4)" }}>
-          Upload a photo of the ID page. The MRZ (two lines at the bottom) is read locally and its
+          Upload both sides. The MRZ (back side) is read locally and its
           check digits validated — a format-level authenticity check.
+          Both photos are encrypted on-device before leaving the browser.
         </p>
 
-        <label
-          style={{
-            display: "block",
-            border: "1px dashed var(--color-border, #444)",
-            borderRadius: "var(--radius-md)",
-            padding: "var(--space-5)",
-            textAlign: "center",
-            cursor: "pointer",
-            background: "var(--color-surface-1)",
-          }}
-        >
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: "none" }}
-            onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-          />
-          {preview ? (
-            <img src={preview} alt="document preview" style={{ maxHeight: 180, margin: "0 auto", borderRadius: 8 }} />
-          ) : (
-            <span className="t-sm c-subtle">📷 Tap to scan or upload passport / ID photo</span>
-          )}
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {([
+            ["front", "Front side", frontPreview, "📷 Front (photo side)"],
+            ["back", "Back side (MRZ)", backPreview, "📷 Back (MRZ side)"],
+          ] as const).map(([slot, label, url, placeholder]) => (
+            <div key={slot}>
+              <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-2)" }}>{label}</p>
+              <label
+                style={{
+                  display: "block",
+                  border: "1px dashed var(--color-border, #444)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "var(--space-5)",
+                  textAlign: "center",
+                  cursor: "pointer",
+                  background: "var(--color-surface-1)",
+                }}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: "none" }}
+                  onChange={(e) => onFile(slot, e.target.files?.[0] ?? null)}
+                />
+                {url ? (
+                  <img src={url} alt={`${label} preview`} style={{ maxHeight: 180, margin: "0 auto", borderRadius: 8 }} />
+                ) : (
+                  <span className="t-sm c-subtle">{placeholder}</span>
+                )}
+              </label>
+            </div>
+          ))}
+        </div>
 
         {vault.mrz && (
           <Card style={{ marginTop: "var(--space-3)", background: "var(--color-surface-1)" }}>
@@ -685,7 +735,7 @@ function VaultTab() {
           <div style={{ marginTop: "var(--space-3)" }}><ErrorBanner>{vault.error}</ErrorBanner></div>
         )}
 
-        {file && !vault.isBusy && (
+        {(front || back) && !vault.isBusy && (
           <div style={{ marginTop: "var(--space-3)" }}>
             <Button variant="ghost" size="sm" onClick={() => setShowManual((s) => !s)}>
               {showManual ? "Hide manual entry" : "No MRZ on your document? Enter details manually"}
@@ -744,11 +794,11 @@ function VaultTab() {
         )}
 
         <div className="flex gap-2" style={{ marginTop: "var(--space-4)" }}>
-          <Button variant="primary" onClick={() => void handleCommit()} disabled={!file || vault.isBusy} loading={vault.isBusy}>
+          <Button variant="primary" onClick={() => void handleCommit()} disabled={!(front || back) || vault.isBusy} loading={vault.isBusy}>
             {vault.commitResult ? "Committed ✓" : "Encrypt & Commit"}
           </Button>
-          {file && !vault.isBusy && (
-            <Button variant="ghost" onClick={() => onFile(null)}>Clear</Button>
+          {(front || back) && !vault.isBusy && (
+            <Button variant="ghost" onClick={() => clearFiles()}>Clear</Button>
           )}
         </div>
 
