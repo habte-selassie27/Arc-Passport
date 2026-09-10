@@ -6,10 +6,18 @@
  * What it does NOT do: generate ZK proofs (that happens on the user's device).
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { useZKVerifiers, useZKStats, useZKProofStatus, useSubmitPassportProof, useSubmitAttributeProof, useVerifyZKProof } from "../hooks/useZKProof";
 import { useZkVault, useVaultBadge } from "../hooks/useZkVault";
+import { useIdentityHistory } from "../hooks/useIdentity";
+import {
+  describeFace,
+  loadImageEl,
+  matchDescriptors,
+  FACE_MATCH_THRESHOLD,
+  type FaceMatchResult,
+} from "../utils/faceMatch";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -488,6 +496,16 @@ function VaultTab() {
   const [back, setBack] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [backPreview, setBackPreview] = useState<string | null>(null);
+  // Face binding: ID portrait ↔ live selfie (+ registration avatar when set).
+  const [selfie, setSelfie] = useState<File | null>(null);
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
+  const [camOn, setCamOn] = useState(false);
+  const [faceResult, setFaceResult] = useState<FaceMatchResult | null>(null);
+  const [faceBusy, setFaceBusy] = useState(false);
+  const [faceError, setFaceError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const { data: idHistory } = useIdentityHistory(address);
   const [showManual, setShowManual] = useState(false);
   const [manual, setManual] = useState({
     documentType: "national_id",
@@ -517,12 +535,130 @@ function VaultTab() {
       setBackPreview(f ? URL.createObjectURL(f) : null);
     }
     setShowManual(false);
+    setFaceResult(null);
+    setFaceError(null);
     vault.reset();
   };
 
   const clearFiles = () => {
     onFile("front", null);
     onFile("back", null);
+  };
+
+  // ── Face binding (who-is-who) ──────────────────────────────────────────
+  // The document portrait must match a live selfie AND (when the wallet has
+  // one) the registration avatar. All on-device; only the pass + distances
+  // are stored in the vault fields. Commit stays blocked until it passes.
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCamOn(false);
+  }, []);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  useEffect(() => {
+    if (camOn && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [camOn]);
+
+  const startCamera = async () => {
+    setFaceError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCamOn(true);
+    } catch {
+      setFaceError("Camera unavailable — allow camera access or upload a recent selfie-style photo instead.");
+    }
+  };
+
+  const captureSelfie = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")?.drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setFaceError("Selfie capture failed — try again.");
+        return;
+      }
+      const f = new File([blob], "selfie.jpg", { type: "image/jpeg" });
+      setSelfie(f);
+      setSelfiePreview(URL.createObjectURL(f));
+      setFaceResult(null);
+      stopCamera();
+    }, "image/jpeg", 0.9);
+  };
+
+  /** Registration avatar bytes via identity metadata (or null when unset). */
+  const fetchAvatarBlob = async (): Promise<Blob | null> => {
+    const uri = idHistory?.identity?.metadataUri;
+    if (!uri) return null;
+    const metaUrl = uri.startsWith("ipfs://")
+      ? `https://gateway.pinata.cloud/ipfs/${uri.slice(7)}`
+      : uri;
+    const metaRes = await fetch(metaUrl);
+    if (!metaRes.ok) return null;
+    const meta = (await metaRes.json().catch(() => null)) as { image?: unknown } | null;
+    if (!meta || typeof meta.image !== "string" || !meta.image) return null;
+    const imgUrl = meta.image.startsWith("ipfs://")
+      ? `https://gateway.pinata.cloud/ipfs/${meta.image.slice(7)}`
+      : meta.image;
+    const imgRes = await fetch(imgUrl);
+    if (!imgRes.ok) return null;
+    return imgRes.blob();
+  };
+
+  const runFaceCheck = async () => {
+    if (!front) {
+      setFaceError("Upload the front side first — the portrait lives there.");
+      return;
+    }
+    if (!selfie) {
+      setFaceError("Take a live selfie first.");
+      return;
+    }
+    setFaceBusy(true);
+    setFaceError(null);
+    setFaceResult(null);
+    try {
+      const named: { name: string; descriptor: Float32Array }[] = [
+        { name: "id", descriptor: await describeFace(await loadImageEl(front)) },
+        { name: "selfie", descriptor: await describeFace(await loadImageEl(selfie)) },
+      ];
+      try {
+        const avatarBlob = await fetchAvatarBlob();
+        if (avatarBlob) {
+          named.push({ name: "avatar", descriptor: await describeFace(await loadImageEl(avatarBlob)) });
+        }
+      } catch {
+        // Avatar unreadable — fall through to ID ↔ selfie only.
+      }
+      setFaceResult(matchDescriptors(named));
+    } catch (err) {
+      setFaceError((err as Error).message);
+    } finally {
+      setFaceBusy(false);
+    }
+  };
+
+  /** Transparent face-bind signals stored in the vault fields on commit. */
+  const faceFieldEntries = (result: FaceMatchResult | null): Record<string, string> => {
+    if (!result?.pass) return {};
+    const out: Record<string, string> = {
+      faceMatch: "pass",
+      faceThreshold: String(result.threshold),
+    };
+    for (const s of result.scores) out[`faceScore_${s.pair}`] = String(s.distance);
+    return out;
   };
 
   const refreshBadge = useCallback(() => {
@@ -532,12 +668,13 @@ function VaultTab() {
   const handleCommit = async () => {
     // MRZ lives on the back side — OCR that, fall back to front if it's the only photo.
     const ocrFile = back ?? front;
-    if (!ocrFile) return;
+    if (!ocrFile || !faceResult?.pass) return;
     try {
       await vault.commitVault(
         ocrFile,
         undefined,
-        { ...(front ? { front } : {}), ...(back ? { back } : {}) }
+        { ...(front ? { front } : {}), ...(back ? { back } : {}) },
+        faceFieldEntries(faceResult)
       );
       refreshBadge();
     } catch {
@@ -547,7 +684,7 @@ function VaultTab() {
 
   const handleManualCommit = async () => {
     const ocrFile = back ?? front;
-    if (!ocrFile || !manual.documentNumber.trim()) return;
+    if (!ocrFile || !manual.documentNumber.trim() || !faceResult?.pass) return;
     try {
       const fields: Record<string, string> = Object.fromEntries(
         Object.entries(manual).map(([k, v]) => [k, v.trim()])
@@ -555,7 +692,8 @@ function VaultTab() {
       await vault.commitVault(
         ocrFile,
         fields,
-        { ...(front ? { front } : {}), ...(back ? { back } : {}) }
+        { ...(front ? { front } : {}), ...(back ? { back } : {}) },
+        faceFieldEntries(faceResult)
       );
       refreshBadge();
     } catch {
@@ -735,6 +873,67 @@ function VaultTab() {
           <div style={{ marginTop: "var(--space-3)" }}><ErrorBanner>{vault.error}</ErrorBanner></div>
         )}
 
+        {/* Face binding — ID portrait must be the person committing it. */}
+        {(front || back) && !vault.isBusy && (
+          <Card style={{ marginTop: "var(--space-3)", background: "var(--color-surface-1)" }}>
+            <p className="t-sm" style={{ fontWeight: 600, marginBottom: "var(--space-1)" }}>
+              Face check — are you this document&apos;s owner?
+            </p>
+            <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-3)" }}>
+              The portrait on the document is matched on-device against a live selfie
+              {idHistory?.identity?.metadataUri ? " and your registration avatar" : ""}.
+              Every pair must score under {FACE_MATCH_THRESHOLD} (lower = same person) or commit stays blocked.
+            </p>
+            <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
+              {!camOn ? (
+                <Button variant="ghost" size="sm" onClick={() => void startCamera()}>
+                  📷 Take a live selfie
+                </Button>
+              ) : (
+                <Button variant="primary" size="sm" onClick={() => captureSelfie()}>
+                  Capture
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void runFaceCheck()}
+                disabled={!front || !selfie || faceBusy}
+                loading={faceBusy}
+              >
+                Check face match
+              </Button>
+            </div>
+            {camOn && (
+              <video ref={videoRef} autoPlay playsInline muted style={{ marginTop: "var(--space-3)", maxHeight: 240, borderRadius: 8 }} />
+            )}
+            {selfiePreview && !camOn && (
+              <img src={selfiePreview} alt="live selfie" style={{ marginTop: "var(--space-3)", maxHeight: 160, borderRadius: 8 }} />
+            )}
+            {faceError && (
+              <div style={{ marginTop: "var(--space-3)" }}><ErrorBanner>{faceError}</ErrorBanner></div>
+            )}
+            {faceResult && (
+              <div style={{ marginTop: "var(--space-3)" }}>
+                {faceResult.scores.map((s) => (
+                  <div key={s.pair} className="data-row">
+                    <span className="data-row__label mono">{s.pair}</span>
+                    <span className="mono t-xs" style={{ color: s.pass ? "var(--color-verified)" : "var(--color-danger, #f87171)" }}>
+                      {s.distance.toFixed(3)} {s.pass ? "✓" : "✗"}
+                    </span>
+                  </div>
+                ))}
+                {!faceResult.pass && (
+                  <p className="t-xs c-subtle" style={{ marginTop: "var(--space-2)" }}>
+                    Faces don&apos;t match — commit is blocked. Retry with better light, no glasses/hat,
+                    and the same person as the document portrait.
+                  </p>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+
         {(front || back) && !vault.isBusy && (
           <div style={{ marginTop: "var(--space-3)" }}>
             <Button variant="ghost" size="sm" onClick={() => setShowManual((s) => !s)}>
@@ -782,7 +981,7 @@ function VaultTab() {
                   <Button
                     variant="primary"
                     onClick={() => void handleManualCommit()}
-                    disabled={!manual.documentNumber.trim() || vault.isBusy}
+                    disabled={!manual.documentNumber.trim() || !faceResult?.pass || vault.isBusy}
                     loading={vault.isBusy}
                   >
                     Encrypt &amp; Commit Manually
@@ -794,7 +993,7 @@ function VaultTab() {
         )}
 
         <div className="flex gap-2" style={{ marginTop: "var(--space-4)" }}>
-          <Button variant="primary" onClick={() => void handleCommit()} disabled={!(front || back) || vault.isBusy} loading={vault.isBusy}>
+          <Button variant="primary" onClick={() => void handleCommit()} disabled={!(front || back) || !faceResult?.pass || vault.isBusy} loading={vault.isBusy}>
             {vault.commitResult ? "Committed ✓" : "Encrypt & Commit"}
           </Button>
           {(front || back) && !vault.isBusy && (

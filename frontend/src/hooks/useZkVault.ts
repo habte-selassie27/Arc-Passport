@@ -95,7 +95,8 @@ export function useZkVault() {
     async (
       file: File,
       manualFields?: Record<string, string>,
-      images?: { front?: File; back?: File }
+      images?: { front?: File; back?: File },
+      extraFields?: Record<string, string>
     ) => {
       if (!address) throw new Error("Wallet not connected");
       setError(null);
@@ -120,6 +121,7 @@ export function useZkVault() {
         if (!fields.documentNumber) {
           throw new Error("Document number missing from extracted fields");
         }
+        if (extraFields) fields = { ...fields, ...extraFields };
 
         // 2. Derive key from wallet signature
         setPhase("key");
