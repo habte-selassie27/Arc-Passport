@@ -220,6 +220,13 @@ export function getVerificationBySubject(subject: string): Web2ProofVerification
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
 }
 
+export function getVerificationBySubjectAndSchema(subject: string, schemaId: string): Web2ProofVerification | undefined {
+  const lower = subject.toLowerCase();
+  return readAll()
+    .filter((r) => r.subject.toLowerCase() === lower && r.schemaId === schemaId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+}
+
 export function getVerificationByNullifier(nullifier: string): Web2ProofVerification | undefined {
   const lower = nullifier.toLowerCase();
   return readAll().find(
@@ -233,8 +240,9 @@ export async function startVerification(
   subject: `0x${string}`,
   schemaId: string
 ): Promise<{ verificationId: string }> {
-  // Idempotency: if already complete + valid on-chain, return existing session
-  const existing = getVerificationBySubject(subject);
+  // Idempotency is per (subject, schemaId): a completed Twitter proof must
+  // not swallow a new Discord session (each template gets its own session).
+  const existing = getVerificationBySubjectAndSchema(subject, schemaId);
   if (existing?.state === "complete" && existing.claimId) {
     const stillValid = await isClaimValidOnChain(existing.claimId);
     if (stillValid) {

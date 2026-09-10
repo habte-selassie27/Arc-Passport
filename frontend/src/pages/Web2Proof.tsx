@@ -39,10 +39,11 @@ function Progress({ phase }: { phase: Phase }) {
 export function Web2ProofPage() {
   const { isConnected } = useAccount();
   const { address, start, submitProof, checkExtension, launchVerification, isExtensionAvailable } = useZkPassFlow();
-  const { data: status } = useWeb2ProofStatus(address);
+  const { data: status, refetch: refetchStatus } = useWeb2ProofStatus(address);
   const { data: config } = useWeb2ProofConfig();
 
   const [phase, setPhase] = useState<Phase>("idle");
+  const [hasDismissedDone, setHasDismissedDone] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; zkpassSchemaId: string } | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,12 +55,14 @@ export function Web2ProofPage() {
     }
   }, [isConnected, checkExtension]);
 
-  // If already verified, show done
+  // If already verified, show done — unless the user explicitly asked to
+  // verify another template (otherwise "Verify Another Template" snaps
+  // straight back to done and other templates are unreachable).
   useEffect(() => {
-    if (status?.verified && phase === "idle") {
+    if (status?.verified && phase === "idle" && !hasDismissedDone) {
       setPhase("done");
     }
-  }, [status]);
+  }, [status, phase, hasDismissedDone]);
 
   if (!isConnected) return (
     <div className="text-center" style={{ padding: "var(--space-6)" }}>
@@ -74,6 +77,7 @@ export function Web2ProofPage() {
 
   const handleSelectTemplate = async (template: { id: string; zkpassSchemaId: string }) => {
     setSelectedTemplate(template);
+    setHasDismissedDone(false);
     setError(null);
     setPhase("starting");
     try {
@@ -95,6 +99,9 @@ export function Web2ProofPage() {
       const proof = await launchVerification(selectedTemplate.zkpassSchemaId);
       setPhase("submitting");
       await submitProof.mutateAsync({ verificationId, proof });
+      // Refresh so the done card shows the just-completed template's
+      // provider/expiry instead of the previous template's stale status.
+      await refetchStatus();
       setPhase("done");
     } catch (err) {
       setError((err as Error).message);
@@ -103,6 +110,7 @@ export function Web2ProofPage() {
   };
 
   const handleRetry = () => {
+    setHasDismissedDone(true);
     setPhase("idle");
     setSelectedTemplate(null);
     setVerificationId(null);

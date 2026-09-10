@@ -101,6 +101,33 @@ describe("zkpassService", () => {
     expect(startA.verificationId).toBeTruthy();
   });
 
+  it("scopes idempotent sessions per schema, not per subject", async () => {
+    // Regression: after completing Twitter, starting Discord returned the
+    // Twitter session (lookup ignored schemaId), so the Discord proof could
+    // never verify. Same schema → same session; other schema → new session.
+    const { appendFileSync } = await import("fs");
+    const createdMs = 1789000000000;
+    appendFileSync(
+      STORE,
+      JSON.stringify({
+        verificationId: "vid-twitter",
+        subject: SUBJECT_A,
+        state: "complete",
+        schemaId: "twitter-account",
+        provider: "zkpass-zktls",
+        claimId: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        createdAt: createdMs,
+        updatedAt: createdMs,
+        expiresAt: createdMs + 3600_000,
+      }) + "\n"
+    );
+    const same = await startVerification(SUBJECT_A, "twitter-account");
+    expect(same.verificationId).toBe("vid-twitter");
+    const other = await startVerification(SUBJECT_A, "discord-account");
+    expect(other.verificationId).toBeTruthy();
+    expect(other.verificationId).not.toBe("vid-twitter");
+  });
+
   it("returns status timestamps in unix SECONDS with attestation TTL (not ms session window)", async () => {
     // Regression: status once returned Date.now()-based ms values, which the
     // frontend renders as `new Date(t * 1000)` → "Expires: 2/22/58662".
