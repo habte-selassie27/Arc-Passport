@@ -16,6 +16,44 @@ interface ClaimIndex {
   blockNum: bigint;
   timestamp: bigint;
   revoked: boolean;
+  // EAS-enrichment fields (filled via getClaim; optional for back-compat).
+  dataCommitment?: string;
+  issuedAt?: bigint;
+  expiresAt?: bigint;
+  refUID?: string;
+  revokedAt?: bigint;
+}
+
+export interface EASClaim {
+  claimId: string;
+  subject: string;
+  schemaId: string;
+  issuer: string;
+  dataCommitment: string;
+  issuedAt: number;
+  expiresAt: number;
+  revoked: boolean;
+  refUID: string;
+  revokedAt: number;
+  blockNum: number;
+}
+
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+export function toEASClaim(e: ClaimIndex): EASClaim {
+  return {
+    claimId: e.claimId,
+    subject: e.subject,
+    schemaId: e.schemaId,
+    issuer: e.issuer,
+    dataCommitment: e.dataCommitment ?? ZERO_BYTES32,
+    issuedAt: Number(e.issuedAt ?? e.timestamp),
+    expiresAt: Number(e.expiresAt ?? 0n),
+    revoked: e.revoked,
+    refUID: e.refUID ?? ZERO_BYTES32,
+    revokedAt: Number(e.revokedAt ?? 0n),
+    blockNum: Number(e.blockNum),
+  };
 }
 
 const claimIndex: Map<string, ClaimIndex> = new Map();
@@ -33,18 +71,29 @@ interface PersistedState {
     blockNum: string;
     timestamp: string;
     revoked: boolean;
+    dataCommitment?: string;
+    issuedAt?: string;
+    expiresAt?: string;
+    refUID?: string;
+    revokedAt?: string;
   }>;
 }
+
+let persistedBlock = 0n;
 
 function loadPersistedState(): { lastIndexed: bigint; claims: ClaimIndex[] } {
   try {
     if (existsSync(STATE_FILE)) {
       const state = JSON.parse(readFileSync(STATE_FILE, "utf8")) as PersistedState;
       const lastIndexed = state.lastIndexedBlock ? BigInt(state.lastIndexedBlock) : 0n;
+      persistedBlock = lastIndexed;
       const claims = (state.claims ?? []).map((c) => ({
         ...c,
         blockNum: BigInt(c.blockNum),
         timestamp: BigInt(c.timestamp),
+        issuedAt: c.issuedAt ? BigInt(c.issuedAt) : undefined,
+        expiresAt: c.expiresAt ? BigInt(c.expiresAt) : undefined,
+        revokedAt: c.revokedAt ? BigInt(c.revokedAt) : undefined,
       }));
       return { lastIndexed, claims };
     }
@@ -54,16 +103,59 @@ function loadPersistedState(): { lastIndexed: bigint; claims: ClaimIndex[] } {
 
 function savePersistedState(block: bigint) {
   try {
+    persistedBlock = block;
     const claims = Array.from(claimIndex.values()).map((c) => ({
       ...c,
       blockNum: c.blockNum.toString(),
       timestamp: c.timestamp.toString(),
+      issuedAt: (c.issuedAt ?? c.timestamp).toString(),
+      expiresAt: (c.expiresAt ?? 0n).toString(),
+      revokedAt: (c.revokedAt ?? 0n).toString(),
     }));
     writeFileSync(STATE_FILE, JSON.stringify({
       lastIndexedBlock: block.toString(),
       claims,
     }));
   } catch { /* ignore */ }
+}
+
+/** Persist live inserts/enrichments without moving the catch-up watermark backwards. */
+function persistLive(blockNum: bigint) {
+  try {
+    if (blockNum > persistedBlock) persistedBlock = blockNum;
+    savePersistedState(persistedBlock);
+    // savePersistedState overwrites persistedBlock with itself — no-op, keeps value.
+  } catch { /* ignore */ }
+}
+
+/** Fetch full claim details on-chain and fill EAS fields. Best-effort, rate-limited. */
+async function enrichClaim(claimId: string): Promise<void> {
+  if (!ADDRESSES.attestationRegistry) return;
+  const key = claimId.toLowerCase();
+  const existing = claimIndex.get(key) ?? claimIndex.get(claimId);
+  if (!existing) return;
+  // Skip if already enriched.
+  if (existing.expiresAt !== undefined && existing.dataCommitment) return;
+  try {
+    const raw = await rpcGate(() =>
+      publicClient.readContract({
+        address: ADDRESSES.attestationRegistry!,
+        abi: ATTESTATION_REGISTRY_ABI,
+        functionName: "getClaim",
+        args: [existing.claimId as `0x${string}`],
+      })
+    );
+    const entry = claimIndex.get(key) ?? claimIndex.get(claimId);
+    if (!entry) return;
+    entry.dataCommitment = raw[4] as string;
+    entry.issuedAt = BigInt(raw[5] as bigint);
+    entry.expiresAt = BigInt(raw[6] as bigint);
+    entry.revoked = Boolean(raw[7]);
+    entry.refUID = (raw[8] as string) || ZERO_BYTES32;
+    entry.revokedAt = BigInt((raw[9] as bigint) ?? 0n);
+  } catch {
+    /* leave defaults — detail endpoint falls back to on-chain read per-request */
+  }
 }
 
 let _catchUpDone = false;
@@ -111,7 +203,11 @@ export async function startClaimIndexer() {
           timestamp: BigInt(Math.floor(Date.now() / 1000)),
           revoked: false,
         };
-        claimIndex.set(entry.claimId, entry);
+        if (!entry.claimId) continue;
+        claimIndex.set(entry.claimId.toLowerCase(), entry);
+        persistLive(log.blockNumber);
+        // Enrich with full on-chain fields (expiresAt, refUID, ...) without blocking.
+        void enrichClaim(entry.claimId).then(() => persistLive(log.blockNumber));
 
         // Live-event notification: subjects learn when a credential is issued to them.
         // (The historical catch-up scan below intentionally does NOT notify.)
@@ -145,8 +241,10 @@ export async function startClaimIndexer() {
     onLogs: (logs) => {
       for (const log of logs) {
         const claimId = (log.args.claimId ?? "") as string;
-        const existing = claimIndex.get(claimId);
+        const existing = claimIndex.get(claimId.toLowerCase());
         if (existing) {
+          existing.revoked = true;
+          persistLive(log.blockNumber);
           existing.revoked = true;
           notifyClaimRevoked({
             claimId: existing.claimId,
@@ -181,9 +279,9 @@ async function _catchUpScan() {
     fromBlock = latest > totalWindow ? latest - totalWindow : 0n;
   }
 
-  // Restore persisted claims into the in-memory index
+  // Restore persisted claims into the in-memory index (normalize keys).
   for (const c of persistedClaims) {
-    claimIndex.set(c.claimId, c);
+    claimIndex.set(c.claimId.toLowerCase(), c);
   }
 
   let indexed = 0;
@@ -236,10 +334,10 @@ async function _catchUpScan() {
             timestamp: BigInt(Math.floor(Date.now() / 1000)),
             revoked: false,
           };
-          claimIndex.set(entry.claimId, entry);
+          claimIndex.set(entry.claimId.toLowerCase(), entry);
           indexed++;
         } else if (decoded.eventName === "ClaimRevoked") {
-          const existing = claimIndex.get(decoded.args.claimId as string);
+          const existing = claimIndex.get((decoded.args.claimId as string).toLowerCase());
           if (existing) existing.revoked = true;
         }
       } catch {
@@ -249,6 +347,19 @@ async function _catchUpScan() {
   }
   console.log(`[indexer] Catch-up scan: indexed ${indexed} claims (${totalLogs} total logs) from blocks ${fromBlock}–${latest}`);
   savePersistedState(latest);
+
+  // Background enrichment: fill expiresAt / refUID / dataCommitment for EAS views.
+  // Slow + best-effort so we don't hammer the RPC after a long scan.
+  void (async () => {
+    const missing = Array.from(claimIndex.values()).filter((c) => c.expiresAt === undefined);
+    if (missing.length === 0) return;
+    console.log(`[indexer] Enriching ${missing.length} claims with on-chain details`);
+    for (const c of missing.slice(0, 500)) {
+      await enrichClaim(c.claimId);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    savePersistedState(latest);
+  })();
 
   if (indexed === 0 && lastIndexed === 0n) {
     console.log("[indexer] 0 claims found — waiting 30s then retrying (RPC may have been rate-limited)");
@@ -306,10 +417,10 @@ async function _catchUpScanOnce(fromBlock: bigint, latest: bigint, chunkSize: bi
             timestamp: BigInt(Math.floor(Date.now() / 1000)),
             revoked: false,
           };
-          claimIndex.set(entry.claimId, entry);
+          claimIndex.set(entry.claimId.toLowerCase(), entry);
           indexed++;
         } else if (decoded.eventName === "ClaimRevoked") {
-          const existing = claimIndex.get(decoded.args.claimId as string);
+          const existing = claimIndex.get((decoded.args.claimId as string).toLowerCase());
           if (existing) existing.revoked = true;
         }
       } catch {
@@ -321,7 +432,7 @@ async function _catchUpScanOnce(fromBlock: bigint, latest: bigint, chunkSize: bi
 }
 
 export function getIndexedClaim(claimId: string): ClaimIndex | undefined {
-  return claimIndex.get(claimId);
+  return claimIndex.get(claimId.toLowerCase()) ?? claimIndex.get(claimId);
 }
 
 /** All indexed claims — used by the notification expiry sweep. */
@@ -339,4 +450,70 @@ export function getClaimsBySubject(subject: string, includeRevoked = false): Cla
     }
   }
   return results;
+}
+
+// ── EAS-compatible read model (single source for /eas routes) ──
+
+export function getEASClaims(): EASClaim[] {
+  return Array.from(claimIndex.values()).map(toEASClaim);
+}
+
+export function getEASClaim(claimId: string): EASClaim | undefined {
+  const e = claimIndex.get(claimId.toLowerCase());
+  if (e) return toEASClaim(e);
+  // Fall back to case-sensitive lookup for legacy keys.
+  const direct = claimIndex.get(claimId);
+  return direct ? toEASClaim(direct) : undefined;
+}
+
+export function getEASClaimsBySubject(subject: string): EASClaim[] {
+  const lower = subject.toLowerCase();
+  return Array.from(claimIndex.values())
+    .filter((c) => c.subject.toLowerCase() === lower)
+    .map(toEASClaim);
+}
+
+export function getEASClaimsByIssuer(issuer: string): EASClaim[] {
+  const lower = issuer.toLowerCase();
+  return Array.from(claimIndex.values())
+    .filter((c) => c.issuer.toLowerCase() === lower)
+    .map(toEASClaim);
+}
+
+export function getEASClaimsBySchema(schemaId: string): EASClaim[] {
+  const lower = schemaId.toLowerCase();
+  return Array.from(claimIndex.values())
+    .filter((c) => c.schemaId.toLowerCase() === lower)
+    .map(toEASClaim);
+}
+
+export function getEASReferencedClaims(claimId: string): EASClaim[] {
+  const lower = claimId.toLowerCase();
+  return Array.from(claimIndex.values())
+    .filter((c) => (c.refUID ?? ZERO_BYTES32).toLowerCase() === lower)
+    .map(toEASClaim);
+}
+
+export function getEASStats() {
+  const claims = Array.from(claimIndex.values()).map(toEASClaim);
+  const now = Math.floor(Date.now() / 1000);
+  const valid = claims.filter((c) => !c.revoked && (c.expiresAt === 0 || c.expiresAt > now));
+  const revoked = claims.filter((c) => c.revoked);
+  const expired = claims.filter((c) => !c.revoked && c.expiresAt > 0 && c.expiresAt <= now);
+  const uniqueSubjects = new Set(claims.map((c) => c.subject.toLowerCase())).size;
+  const uniqueIssuers = new Set(claims.map((c) => c.issuer.toLowerCase())).size;
+  const uniqueSchemas = new Set(claims.map((c) => c.schemaId.toLowerCase())).size;
+  const withRef = claims.filter((c) => c.refUID !== ZERO_BYTES32).length;
+
+  return {
+    total: claims.length,
+    valid: valid.length,
+    revoked: revoked.length,
+    expired: expired.length,
+    uniqueSubjects,
+    uniqueIssuers,
+    uniqueSchemas,
+    withReference: withRef,
+    indexerReady: _catchUpDone,
+  };
 }

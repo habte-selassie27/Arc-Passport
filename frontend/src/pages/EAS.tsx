@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useAccount } from "wagmi";
 import { useEASStats, useEASSchemas, useEASAttestations, useEASAttestation, useEASSchema, useEASVerify } from "../hooks/useEAS";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
@@ -96,15 +97,28 @@ function OverviewTab() {
   if (!stats) return null;
 
   return (
-    <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
-      <StatCard label="Total Attestations" value={stats.total} color="var(--color-arc-primary)" />
-      <StatCard label="Valid" value={stats.valid} color="var(--color-verified)" />
-      <StatCard label="Revoked" value={stats.revoked} color="var(--color-danger)" />
-      <StatCard label="Expired" value={stats.expired} color="var(--color-warning)" />
-      <StatCard label="Unique Subjects" value={stats.uniqueSubjects} />
-      <StatCard label="Unique Issuers" value={stats.uniqueIssuers} />
-      <StatCard label="Unique Schemas" value={stats.uniqueSchemas} />
-      <StatCard label="With Reference" value={stats.withReference} color="var(--color-arc-primary)" />
+    <div>
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+        <StatCard label="Total Attestations" value={stats.total} color="var(--color-arc-primary)" />
+        <StatCard label="Valid" value={stats.valid} color="var(--color-verified)" />
+        <StatCard label="Revoked" value={stats.revoked} color="var(--color-danger)" />
+        <StatCard label="Expired" value={stats.expired} color="var(--color-warning)" />
+        <StatCard label="Unique Subjects" value={stats.uniqueSubjects} />
+        <StatCard label="Unique Issuers" value={stats.uniqueIssuers} />
+        <StatCard label="Unique Schemas" value={stats.uniqueSchemas} />
+        <StatCard label="With Reference" value={stats.withReference} color="var(--color-arc-primary)" />
+      </div>
+      {stats.indexerReady === false && (
+        <p className="t-xs c-subtle" style={{ marginTop: "var(--space-4)" }}>
+          Indexer syncing historical blocks — stats will update when catch-up completes.
+        </p>
+      )}
+      {stats.total === 0 && stats.indexerReady !== false && (
+        <p className="t-xs c-subtle" style={{ marginTop: "var(--space-4)" }}>
+          On-chain attestations only. Liveness / OpenID3 / zkPass checks appear here after their
+          attest() transaction mines — pending or off-chain-only verifications are not listed.
+        </p>
+      )}
     </div>
   );
 }
@@ -162,12 +176,15 @@ function SchemasTab() {
 // ── Attestations Tab ──
 
 function AttestationsTab() {
+  const { address: connected } = useAccount();
   const [filters, setFilters] = useState({
     subject: "",
     issuer: "",
     valid: "",
     page: 1,
   });
+  const showingMine = connected != null
+    && filters.subject.toLowerCase() === connected.toLowerCase();
 
   const queryFilters = {
     ...(filters.subject && isValidAddress(filters.subject) ? { subject: filters.subject as `0x${string}` } : {}),
@@ -212,6 +229,27 @@ function AttestationsTab() {
             <option value="false">Invalid/Revoked</option>
           </select>
         </div>
+        <div className="flex gap-2" style={{ marginTop: "var(--space-3)" }}>
+          <button
+            className={`btn btn--${showingMine ? "primary" : "ghost"} btn--sm`}
+            disabled={!connected}
+            title={connected ? `Show attestations for ${connected}` : "Connect wallet to filter by your address"}
+            onClick={() => {
+              if (!connected) return;
+              setFilters((f) => ({ ...f, subject: showingMine ? "" : connected, page: 1 }));
+            }}
+          >
+            {showingMine ? "Showing mine" : "Mine"}
+          </button>
+          {(filters.subject || filters.issuer || filters.valid) && (
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => setFilters({ subject: "", issuer: "", valid: "", page: 1 })}
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </Card>
 
       {isLoading && <CardSkeleton />}
@@ -223,7 +261,14 @@ function AttestationsTab() {
             {data.total} attestation{data.total !== 1 ? "s" : ""} found
           </p>
           {data.attestations.length === 0 ? (
-            <EmptyState title="No attestations" body="No attestations match your filters." />
+            <EmptyState
+              title="No attestations"
+              body={
+                filters.subject || filters.issuer
+                  ? "No on-chain attestations match your filters."
+                  : "No on-chain attestations indexed yet. Complete a verification (liveness, OpenID3, zkPass) and wait for its attest() transaction to mine."
+              }
+            />
           ) : (
             <div className="grid gap-3">
               {data.attestations.map((att) => (

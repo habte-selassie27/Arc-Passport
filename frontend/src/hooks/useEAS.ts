@@ -39,6 +39,7 @@ export interface EASStats {
   uniqueIssuers:  number;
   uniqueSchemas:  number;
   withReference:  number;
+  indexerReady?:  boolean;
 }
 
 export interface EASVerifyResult {

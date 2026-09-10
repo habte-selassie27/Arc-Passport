@@ -5,12 +5,13 @@ import { ATTESTATION_REGISTRY_ABI } from "../abis/AttestationRegistry.js";
 import {
   getEASClaims,
   getEASClaim,
-  getClaimsBySubject,
-  getClaimsByIssuer,
-  getClaimsBySchema,
-  getReferencedClaims,
+  getEASClaimsBySubject,
+  getEASClaimsByIssuer,
+  getEASClaimsBySchema,
+  getEASReferencedClaims,
   getEASStats,
-} from "../indexer/easIndexer.js";
+  isIndexerReady,
+} from "../indexer/claimIndexer.js";
 import { ALL_SCHEMAS } from "../constants/schemas.js";
 import { ArcPassError, Errors } from "../utils/errors.js";
 
@@ -38,7 +39,18 @@ function isValidBytes32(id: string): id is `0x${string}` {
 router.get("/stats", (_req, res) => {
   try {
     const stats = getEASStats();
-    res.json({ success: true, data: stats });
+    res.json({ success: true, data: { ...stats, indexerReady: isIndexerReady() } });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ── Indexer status (for empty-state copy) ──
+
+router.get("/status", (_req, res) => {
+  try {
+    const stats = getEASStats();
+    res.json({ success: true, data: { ...stats, indexerReady: isIndexerReady(), registry: ADDRESSES.attestationRegistry ?? null } });
   } catch (err) {
     handleError(res, err);
   }
@@ -48,25 +60,28 @@ router.get("/stats", (_req, res) => {
 
 router.get("/schemas", (_req, res) => {
   try {
-    // Combine on-chain schemas with canonical off-chain definitions
+    // Canonical off-chain definitions + live attestation counts from the index.
     const schemas: Array<{
       uid: string;
       name: string;
       description: string;
       fields: string;
       registry: string;
+      attestationCount: number;
     }> = [];
 
     // Add canonical schemas from constants
     for (const [serviceKey, schemasMap] of Object.entries(ALL_SCHEMAS)) {
       for (const [key, def] of Object.entries(schemasMap as Record<string, any>)) {
         const fieldsArray = Array.isArray(def.fields) ? def.fields : [];
+        const uid = def.id ?? `0x${"0".repeat(64)}`;
         schemas.push({
-          uid: def.id ?? `0x${"0".repeat(64)}`,
+          uid,
           name: def.name ?? key,
           description: def.description ?? `${serviceKey} attestation schema`,
           fields: fieldsArray.map((f: { name: string; type: string }) => `${f.name}:${f.type}`).join(", "),
           registry: "canonical",
+          attestationCount: getEASClaimsBySchema(uid).length,
         });
       }
     }
@@ -120,7 +135,7 @@ router.get("/schemas/:uid", async (req, res) => {
             args: [uid],
           });
 
-          const claims = getClaimsBySchema(uid);
+          const claims = getEASClaimsBySchema(uid);
           res.json({
             success: true,
             data: {
@@ -143,7 +158,7 @@ router.get("/schemas/:uid", async (req, res) => {
       throw new ArcPassError("SCHEMA_NOT_FOUND", `Schema ${uid} not found`, 404);
     }
 
-    const claims = getClaimsBySchema(uid);
+    const claims = getEASClaimsBySchema(uid);
     const fieldsArray = Array.isArray(found.fields) ? found.fields : [];
     res.json({
       success: true,
@@ -263,7 +278,7 @@ router.get("/attestations/:uid", async (req, res) => {
     }
 
     // Get referencing attestations (claims that reference this one)
-    const references = getReferencedClaims(uid);
+    const references = getEASReferencedClaims(uid);
 
     // Determine validity
     const now = Math.floor(Date.now() / 1000);
@@ -305,7 +320,7 @@ router.get("/verify/:address", async (req, res) => {
       throw Errors.InvalidSubject(address);
     }
 
-    const claims = getClaimsBySubject(address);
+    const claims = getEASClaimsBySubject(address);
     const now = Math.floor(Date.now() / 1000);
 
     const valid = claims.filter((c) => !c.revoked && (c.expiresAt === 0 || c.expiresAt > now));
@@ -376,7 +391,7 @@ router.get("/subject/:address", (req, res) => {
     if (!isValidAddress(address)) {
       throw Errors.InvalidSubject(address);
     }
-    const claims = getClaimsBySubject(address);
+    const claims = getEASClaimsBySubject(address);
     res.json({ success: true, data: { address, count: claims.length, attestations: claims } });
   } catch (err) {
     handleError(res, err);
@@ -389,7 +404,7 @@ router.get("/attester/:address", (req, res) => {
     if (!isValidAddress(address)) {
       throw Errors.InvalidSubject(address);
     }
-    const claims = getClaimsByIssuer(address);
+    const claims = getEASClaimsByIssuer(address);
     res.json({ success: true, data: { address, count: claims.length, attestations: claims } });
   } catch (err) {
     handleError(res, err);
