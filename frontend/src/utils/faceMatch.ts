@@ -63,22 +63,30 @@ export function loadImageEl(
 /**
  * Descriptor for the single face in an image.
  * Throws when there is no face or more than one — matching must be 1:1.
+ *
+ * Detection runs in two passes: a default first, then a high-sensitivity
+ * retry — dark selfie captures and small card portraits often miss the
+ * first pass. `label` names the source in the error (e.g. "selfie").
  */
 export async function describeFace(
-  img: HTMLImageElement | HTMLCanvasElement
+  img: HTMLImageElement | HTMLCanvasElement,
+  label?: string
 ): Promise<Float32Array> {
   await loadFaceModels();
-  const detection = await api!
-    .detectSingleFace(
-      img,
-      new api!.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 })
-    )
-    .withFaceLandmarks()
-    .withFaceDescriptor();
-  if (!detection) {
-    throw new FaceMatchError("No face found — use a clear, front-facing photo");
+  for (const scoreThreshold of [0.5, 0.2]) {
+    const detection = await api!
+      .detectSingleFace(
+        img,
+        new api!.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold })
+      )
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+    if (detection) return detection.descriptor;
   }
-  return detection.descriptor;
+  const where = label ? ` in the ${label}` : "";
+  throw new FaceMatchError(
+    `No face found${where} — retake with the face well-lit, larger in frame, and facing the camera`
+  );
 }
 
 export function euclidean(a: ArrayLike<number>, b: ArrayLike<number>): number {

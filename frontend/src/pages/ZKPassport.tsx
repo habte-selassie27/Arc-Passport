@@ -631,13 +631,13 @@ function VaultTab() {
     setFaceResult(null);
     try {
       const named: { name: string; descriptor: Float32Array }[] = [
-        { name: "id", descriptor: await describeFace(await loadImageEl(front)) },
-        { name: "selfie", descriptor: await describeFace(await loadImageEl(selfie)) },
+        { name: "id", descriptor: await describeFace(await loadImageEl(front), "ID photo") },
+        { name: "selfie", descriptor: await describeFace(await loadImageEl(selfie), "selfie") },
       ];
       try {
         const avatarBlob = await fetchAvatarBlob();
         if (avatarBlob) {
-          named.push({ name: "avatar", descriptor: await describeFace(await loadImageEl(avatarBlob)) });
+          named.push({ name: "avatar", descriptor: await describeFace(await loadImageEl(avatarBlob), "avatar") });
         }
       } catch {
         // Avatar unreadable — fall through to ID ↔ selfie only.
