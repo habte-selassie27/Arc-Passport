@@ -19,6 +19,7 @@ import {
   getVerification,
   getVerificationBySubject,
   getVerificationByNullifier,
+  getWeb2ProofStatus,
 } from "../../services/zkpassService.js";
 
 const STORE = join(process.cwd(), ".web2-proof-verifications.jsonl");
@@ -98,5 +99,34 @@ describe("zkpassService", () => {
     // For now, just verify the session creation works
     const startA = await startVerification(SUBJECT_A, "github-account");
     expect(startA.verificationId).toBeTruthy();
+  });
+
+  it("returns status timestamps in unix SECONDS with attestation TTL (not ms session window)", async () => {
+    // Regression: status once returned Date.now()-based ms values, which the
+    // frontend renders as `new Date(t * 1000)` → "Expires: 2/22/58662".
+    // Legacy record shape (completed before attestedAt was persisted).
+    const { appendFileSync } = await import("fs");
+    const createdMs = 1789000000000;
+    appendFileSync(
+      STORE,
+      JSON.stringify({
+        verificationId: "vid-legacy",
+        subject: SUBJECT_A,
+        state: "complete",
+        schemaId: "twitter-account",
+        provider: "zkpass-zktls",
+        claimId: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        createdAt: createdMs,
+        updatedAt: createdMs,
+        expiresAt: createdMs + 3600_000, // old 1h session window (ms)
+      }) + "\n"
+    );
+    const status = await getWeb2ProofStatus(SUBJECT_A);
+    expect(status.verified).toBe(true);
+    // Seconds, not milliseconds.
+    expect(status.expiresAt!).toBeLessThan(10_000_000_000);
+    // Attestation TTL (1y), not the 1h session window.
+    expect(status.expiresAt!).toBe(Math.floor(createdMs / 1000) + 365 * 24 * 60 * 60);
+    expect(status.checkedAt!).toBe(Math.floor(createdMs / 1000));
   });
 });

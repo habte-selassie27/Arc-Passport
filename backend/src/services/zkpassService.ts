@@ -45,6 +45,12 @@ export interface Web2ProofVerification {
   createdAt: number;
   updatedAt: number;
   expiresAt: number;
+  // Attestation timestamps (unix SECONDS, set at completion). The API-wide
+  // convention is seconds (frontends render `new Date(t * 1000)`); createdAt /
+  // expiresAt above are session timestamps in MILLISECONDS — never return
+  // those from status endpoints (renders as year 58k).
+  attestedAt?: number;
+  attestationExpiresAt?: number;
 }
 
 // ── Persistence (advisory JSONL) ──
@@ -355,6 +361,8 @@ export async function handleProofSubmission(
   record.state = "complete";
   record.claimId = claimId ?? undefined;
   record.txHash = txHash;
+  record.attestedAt = checkedAt;
+  record.attestationExpiresAt = expiresAt;
   record.updatedAt = Date.now();
   upsert(record);
 
@@ -370,11 +378,14 @@ export async function getWeb2ProofStatus(
   }
 
   const valid = await isClaimValidOnChain(record.claimId);
+  // Seconds + attestation TTL (not the 1-hour session window). Fallbacks cover
+  // records completed before attestedAt/attestationExpiresAt were persisted.
+  const checkedAtSec = record.attestedAt ?? Math.floor(record.createdAt / 1000);
   return {
     verified: valid,
     provider: record.provider,
-    checkedAt: record.createdAt,
-    expiresAt: record.expiresAt,
+    checkedAt: checkedAtSec,
+    expiresAt: record.attestationExpiresAt ?? (checkedAtSec + VERIFICATION_TTL_SECONDS),
     isHolder: valid,
   };
 }

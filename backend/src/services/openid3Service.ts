@@ -35,6 +35,11 @@ export interface OpenID3Link {
   createdAt: number;
   updatedAt: number;
   expiresAt: number;
+  // Attestation timestamps (unix SECONDS, set at completion). API convention
+  // is seconds (frontends render `new Date(t * 1000)`); createdAt/expiresAt
+  // above are session timestamps in MILLISECONDS — never return those.
+  linkedAtSec?: number;
+  attestationExpiresAt?: number;
 }
 
 // ── Persistence (advisory JSONL) ──
@@ -400,6 +405,8 @@ export async function handleDAuthCallback(
   record.state = "complete";
   record.claimId = claimId ?? undefined;
   record.txHash = txHash;
+  record.linkedAtSec = linkedAt;
+  record.attestationExpiresAt = expiresAt;
   record.updatedAt = Date.now();
   upsert(record);
 
@@ -504,6 +511,8 @@ export async function handleOAuthCallback(
   record.state = "complete";
   record.claimId = claimId ?? undefined;
   record.txHash = txHash;
+  record.linkedAtSec = linkedAt;
+  record.attestationExpiresAt = expiresAt;
   record.updatedAt = Date.now();
   upsert(record);
 
@@ -519,12 +528,15 @@ export async function getOpenID3Status(
   }
 
   const valid = await isClaimValidOnChain(record.claimId);
+  // Seconds + attestation TTL (not the session window). Fallbacks cover
+  // records completed before linkedAtSec/attestationExpiresAt were persisted.
+  const linkedAtSec = record.linkedAtSec ?? Math.floor(record.createdAt / 1000);
   return {
     linked: valid,
     provider: record.providerName,
     accountHandle: record.accountHandle,
-    checkedAt: record.createdAt,
-    expiresAt: record.expiresAt,
+    checkedAt: linkedAtSec,
+    expiresAt: record.attestationExpiresAt ?? (linkedAtSec + IDENTITY_TTL_SECONDS),
     isHolder: valid,
   };
 }
