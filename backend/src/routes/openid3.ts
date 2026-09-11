@@ -10,6 +10,7 @@ import {
   handleDAuthCallback,
   handleOAuthCallback,
   exchangeOAuthCode,
+  existingValidClaim,
   getLink,
   getOpenID3Status,
 } from "../services/openid3Service.js";
@@ -259,6 +260,20 @@ router.get("/twitter/callback", async (req, res) => {
     const walletId = process.env.CIRCLE_OPENID3_ISSUER_WALLET_ID;
     const registryAddress = process.env.ATTESTATION_REGISTRY_ADDRESS;
     const OPENID3_IDENTITY_ID = SOCIAL_SCHEMAS.OPENID3_IDENTITY.id!;
+
+    // Already holds a valid claim → complete without re-attesting (one active
+    // claim per subject+schema+issuer; re-attest reverts and wastes gas).
+    const prior = await existingValidClaim(subject);
+    if (prior) {
+      record.state = "complete";
+      record.claimId = prior.claimId;
+      if (prior.linkedAtSec) record.linkedAtSec = prior.linkedAtSec;
+      if (prior.attestationExpiresAt) record.attestationExpiresAt = prior.attestationExpiresAt;
+      record.updatedAt = Date.now();
+      persistLink(record);
+      res.redirect(`${FRONTEND_URL}/openid3?success=true&provider=twitter`);
+      return;
+    }
 
     if (walletId && registryAddress) {
       record.state = "attesting";

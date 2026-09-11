@@ -114,6 +114,43 @@ async function recoverClaimId(
   return undefined;
 }
 
+/** On-chain timestamps for an existing claim (best-effort, advisory). */
+async function readClaimTimes(
+  claimId: string
+): Promise<{ issuedAt: number; expiresAt: number } | undefined> {
+  if (!process.env.ATTESTATION_REGISTRY_ADDRESS) return undefined;
+  try {
+    const claim = (await publicClient.readContract({
+      address: process.env.ATTESTATION_REGISTRY_ADDRESS as `0x${string}`,
+      abi: ATTESTATION_REGISTRY_ABI,
+      functionName: "getClaim",
+      args: [claimId as `0x${string}`],
+    })) as unknown as [unknown, unknown, unknown, unknown, unknown, bigint, bigint];
+    return { issuedAt: Number(claim[5]), expiresAt: Number(claim[6]) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Idempotent re-link: the registry allows only one active claim per
+ * (subject, schemaId, issuer) and all OpenID3 providers share one schema, so
+ * re-attesting a wallet that already holds a valid claim reverts with
+ * ArcPass__ActiveClaimExists (surfaced as "Circle: transaction failed").
+ * The JSONL session store is ephemeral on hosted backends, so re-check the
+ * on-chain source of truth before spending a Circle transaction. */
+export async function existingValidClaim(
+  subject: `0x${string}`
+): Promise<{ claimId: string; linkedAtSec?: number; attestationExpiresAt?: number } | undefined> {
+  const claimId = await recoverClaimId(subject, OPENID3_IDENTITY_ID);
+  if (!claimId || !(await isClaimValidOnChain(claimId))) return undefined;
+  const times = await readClaimTimes(claimId);
+  return {
+    claimId,
+    ...(times && times.issuedAt > 0 ? { linkedAtSec: times.issuedAt } : {}),
+    ...(times && times.expiresAt > 0 ? { attestationExpiresAt: times.expiresAt } : {}),
+  };
+}
+
 // ── Query helpers ──
 
 export function getLink(linkId: string): OpenID3Link | undefined {
@@ -371,6 +408,18 @@ export async function handleDAuthCallback(
     throw Errors.IssuerNotConfigured("openid3", "ATTESTATION_REGISTRY_ADDRESS");
   }
 
+  // Already holds a valid claim → complete without re-attesting (see helper).
+  const existing = await existingValidClaim(subject);
+  if (existing) {
+    record.state = "complete";
+    record.claimId = existing.claimId;
+    if (existing.linkedAtSec) record.linkedAtSec = existing.linkedAtSec;
+    if (existing.attestationExpiresAt) record.attestationExpiresAt = existing.attestationExpiresAt;
+    record.updatedAt = Date.now();
+    upsert(record);
+    return record;
+  }
+
   const linkedAt = Math.floor(Date.now() / 1000);
   const expiresAt = linkedAt + IDENTITY_TTL_SECONDS;
   const dataCommitment = keccak256(
@@ -475,6 +524,18 @@ export async function handleOAuthCallback(
   }
   if (!process.env.ATTESTATION_REGISTRY_ADDRESS) {
     throw Errors.IssuerNotConfigured("openid3", "ATTESTATION_REGISTRY_ADDRESS");
+  }
+
+  // Already holds a valid claim → complete without re-attesting (see helper).
+  const existing = await existingValidClaim(subject);
+  if (existing) {
+    record.state = "complete";
+    record.claimId = existing.claimId;
+    if (existing.linkedAtSec) record.linkedAtSec = existing.linkedAtSec;
+    if (existing.attestationExpiresAt) record.attestationExpiresAt = existing.attestationExpiresAt;
+    record.updatedAt = Date.now();
+    upsert(record);
+    return record;
   }
 
   const linkedAt = Math.floor(Date.now() / 1000);
