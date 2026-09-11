@@ -87,12 +87,16 @@ function generateCodeChallenge(verifier: string): string {
 }
 
 // Twitter requires HTTPS redirect URIs (plain localhost is rejected by X for
-// production apps). This MUST exactly match the Callback URI / Redirect URL
-// registered in the X Developer Portal → User authentication settings, and is
-// used both for the /authorize redirect and the token exchange.
+// production apps). Single source of truth for the Twitter callback URL: it is
+// used for the /authorize redirect in BOTH flows (server-side /twitter/start
+// and createOAuthSession) and for the token exchange. It MUST exactly match a
+// Callback URI registered in the X Developer Portal → User authentication
+// settings, or X fails with "Something went wrong" before issuing a code.
 export function twitterRedirectUri(): string {
-  const backendBase = process.env.BACKEND_URL || "http://localhost:3001";
-  return `${backendBase}/openid3/twitter/callback`;
+  const base = process.env.OPENID3_TWITTER_REDIRECT_BASE
+    || process.env.BACKEND_URL
+    || "http://localhost:3001";
+  return `${base}/openid3/twitter/callback`;
 }
 
 // Exported for direct token exchange
@@ -123,12 +127,12 @@ export class DAuthProvider implements OpenID3Provider {
       );
     }
 
-    // Twitter requires HTTPS — use the env var if provided.
-    const redirectBase = params.providerId === "twitter"
-      ? (process.env.OPENID3_TWITTER_REDIRECT_BASE || this.redirectBase)
-      : this.redirectBase;
-
-    const redirectUri = `${redirectBase}/openid3/callback`;
+    // Redirect target: Twitter has a single fixed callback URI (X rejects any
+    // mismatch at authorize time AND at token exchange), all other providers
+    // share the frontend callback page.
+    const redirectUri = params.providerId === "twitter"
+      ? twitterRedirectUri()
+      : `${this.redirectBase}/openid3/callback`;
     const state = `${params.linkId || sessionId}:${params.subject}:${params.providerId}`;
 
     const authUrl = new URL(config.authorizeUrl);
