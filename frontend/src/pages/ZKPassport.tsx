@@ -523,6 +523,7 @@ function VaultTab() {
   const {
     data: badge,
     isLoading: statusLoading,
+    error: badgeError,
     refetch: refetchBadge,
   } = useVaultBadge(address);
 
@@ -677,7 +678,10 @@ function VaultTab() {
         faceFieldEntries(faceResult)
       );
       refreshBadge();
-    } catch {
+    } catch (err) {
+      // Documents without an ICAO MRZ (QR-code national IDs, US licenses)
+      // can never pass OCR — open the manual path instead of dead-ending.
+      if (/valid MRZ/i.test((err as Error).message)) setShowManual(true);
       /* error already surfaced via vault.error */
     }
   };
@@ -735,7 +739,14 @@ function VaultTab() {
           </Button>
         </div>
         {!badge || !badge.committed ? (
-          <p className="t-sm c-subtle">No vault committed for this wallet yet.</p>
+          badgeError ? (
+            <p className="t-sm" style={{ color: "var(--color-warning)" }}>
+              Couldn&apos;t reach the backend to check vault status ({badgeError.message}). Your
+              commitment may exist — check your connection, then hit Refresh.
+            </p>
+          ) : (
+            <p className="t-sm c-subtle">No vault committed for this wallet yet.</p>
+          )
         ) : (
           <>
             <div className="data-row">
