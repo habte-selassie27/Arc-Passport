@@ -197,6 +197,7 @@ export class MockOpenID3Provider implements OpenID3Provider {
       sessionId: `mock-session-${Date.now()}`,
       authUrl: `https://mock-oauth.example.com/auth?subject=${params.subject}&provider=${params.providerId}`,
       expiresAt: Date.now() + 3600_000,
+      redirectUri: `https://mock.example.com/openid3/callback`,
     };
   }
 
