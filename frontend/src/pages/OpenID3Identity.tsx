@@ -5,6 +5,9 @@ import {
   useOpenID3Flow,
   useOpenID3Status,
   useOpenID3Config,
+  type OpenID3Config,
+  type OpenID3Link,
+  type OpenID3Status,
 } from "../hooks/useOpenID3";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -13,6 +16,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { Callout } from "../components/ui/Callout";
 import { PageHeader } from "../components/ui/PageHeader";
 import { AddressDisplay } from "../components/ui/AddressDisplay";
+import { API_BASE_URL } from "../config/api";
 
 type Phase = "idle" | "selecting" | "redirecting" | "authenticating" | "verifying" | "done" | "failed";
 
@@ -40,7 +44,7 @@ function Progress({ phase }: { phase: Phase }) {
 export function OpenID3IdentityPage() {
   const { isConnected } = useAccount();
   const { address, start, poll, verifyWithDAuth } = useOpenID3Flow();
-  const { data: status } = useOpenID3Status(address);
+  const { data: status, refetch: refetchStatus } = useOpenID3Status(address);
   const { data: config } = useOpenID3Config();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -127,6 +131,14 @@ export function OpenID3IdentityPage() {
     }
   }, [status]);
 
+  // Refresh the public status once linking completes so the success card
+  // shows the fresh handle/expiry (the pre-flow snapshot may be empty).
+  useEffect(() => {
+    if (phase === "done") {
+      void refetchStatus();
+    }
+  }, [phase]);
+
   if (!isConnected) return (
     <div className="text-center" style={{ padding: "var(--space-6)" }}>
       <p className="display t-lg" style={{ marginBottom: "var(--space-2)" }}>
@@ -146,10 +158,11 @@ export function OpenID3IdentityPage() {
       const result = await start.mutateAsync(providerId);
       setStartData(result);
 
-      // Twitter: server-side redirect flow (backend handles PKCE + redirect)
+      // Twitter: server-side redirect flow (backend handles PKCE + redirect).
+      // Same-origin /api path (proxied to Render) — never hardcode the
+      // Render URL (see config/api.ts).
       if (providerId === "twitter") {
-        const backendUrl = import.meta.env.VITE_API_URL || "https://arc-passport.onrender.com";
-        window.location.href = `${backendUrl}/openid3/twitter/start?linkId=${result.linkId}`;
+        window.location.href = `${API_BASE_URL}/openid3/twitter/start?linkId=${result.linkId}`;
       } else {
         // GitHub/Discord: client-side redirect (existing flow)
         window.location.href = result.authUrl;
@@ -263,38 +276,14 @@ export function OpenID3IdentityPage() {
       )}
 
       {phase === "done" && (
-        <Card>
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-green-600">
-              <span className="text-xl">{"\u2713"}</span>
-              <span className="font-semibold">Identity Linked</span>
-            </div>
-            <p className="text-sm text-gray-500">
-              Your Web2 identity has been verified via DAuth Network and linked to your wallet on-chain.
-            </p>
-            {status?.provider && (
-              <div className="text-sm">
-                <span className="text-gray-500">Provider: </span>
-                <span className="font-mono">{status.provider}</span>
-              </div>
-            )}
-            {status?.accountHandle && (
-              <div className="text-sm">
-                <span className="text-gray-500">Account: </span>
-                <span className="font-mono">{status.accountHandle}</span>
-              </div>
-            )}
-            {status?.expiresAt && (
-              <div className="text-sm">
-                <span className="text-gray-500">Expires: </span>
-                <span>{new Date(status.expiresAt * 1000).toLocaleDateString()}</span>
-              </div>
-            )}
-            <Button onClick={handleRetry} variant="ghost">
-              Link Another Provider
-            </Button>
-          </div>
-        </Card>
+        <DoneCard
+          config={config}
+          status={status ?? null}
+          link={verifyWithDAuth.data ?? null}
+          selectedProvider={selectedProvider}
+          address={address}
+          onRetry={handleRetry}
+        />
       )}
 
       {status?.linked && phase === "done" && (
@@ -304,5 +293,117 @@ export function OpenID3IdentityPage() {
         </Callout>
       )}
     </div>
+  );
+}
+
+function providerDisplayName(
+  config: OpenID3Config | undefined,
+  ...ids: Array<string | null | undefined>
+): string {
+  const id = ids.find((v) => v && v.trim());
+  if (!id) return "Web2 account";
+  const known = config?.providers.find((p) => p.id.toLowerCase() === id.toLowerCase());
+  if (known) return known.name;
+  return id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+/** Success summary: what was verified, what was issued, and what to do next. */
+function DoneCard({
+  config,
+  status,
+  link,
+  selectedProvider,
+  address,
+  onRetry,
+}: {
+  config: OpenID3Config | undefined;
+  status: OpenID3Status | null;
+  link: OpenID3Link | null;
+  selectedProvider: string | null;
+  address: `0x${string}` | undefined;
+  onRetry: () => void;
+}) {
+  const provider = providerDisplayName(config, link?.providerName, status?.provider, selectedProvider);
+  const handle = link?.accountHandle || status?.accountHandle;
+  const claimId = link?.claimId;
+  const txHash = link?.txHash;
+  const expiresAt = status?.expiresAt;
+
+  return (
+    <Card>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-green-600">
+          <span className="text-xl">{"\u2713"}</span>
+          <span className="font-semibold">{provider} Authentication Done</span>
+        </div>
+        <p className="text-sm text-gray-500">
+          {handle ? (
+            <>Your {provider} account <span className="font-mono">@{handle}</span> was verified via
+            DAuth Network and linked to your wallet on-chain.</>
+          ) : (
+            <>Your {provider} account was verified via DAuth Network and linked to your wallet on-chain.</>
+          )}
+        </p>
+        <div className="grid gap-1">
+          <div className="text-sm">
+            <span className="text-gray-500">Provider: </span>
+            <span className="font-mono">{provider}</span>
+          </div>
+          {handle && (
+            <div className="text-sm">
+              <span className="text-gray-500">Account: </span>
+              <span className="font-mono">@{handle}</span>
+            </div>
+          )}
+          {address && (
+            <div className="text-sm">
+              <span className="text-gray-500">Wallet: </span>
+              <AddressDisplay address={address} truncate />
+            </div>
+          )}
+          {claimId && (
+            <div className="text-sm">
+              <span className="text-gray-500">Attestation: </span>
+              <span className="font-mono" style={{ wordBreak: "break-all" }}>{claimId}</span>
+            </div>
+          )}
+          {txHash && (
+            <div className="text-sm">
+              <span className="text-gray-500">Transaction: </span>
+              <a
+                href={`https://testnet.arcscan.app/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono"
+                style={{ wordBreak: "break-all" }}
+              >
+                {txHash} ↗
+              </a>
+            </div>
+          )}
+          {expiresAt ? (
+            <div className="text-sm">
+              <span className="text-gray-500">Attestation expires: </span>
+              <span>{new Date(expiresAt * 1000).toLocaleDateString()}</span>
+            </div>
+          ) : null}
+        </div>
+        <Callout>
+          What this means: an <span className="font-mono">arcpass_openid3_identity</span> attestation
+          now points at your wallet. It shows on your Passport, counts as a verified issuer signal,
+          and anyone can re-verify it on-chain — no password or token was stored.
+        </Callout>
+        <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
+          {address && (
+            <a href={`/passport/${address}`}>
+              <Button variant="primary">View Passport</Button>
+            </a>
+          )}
+          <Button onClick={onRetry} variant="ghost">
+            Link Another Provider
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
