@@ -17,6 +17,7 @@ export interface OAuthSession {
   authUrl: string;
   expiresAt: number;
   codeVerifier?: string; // PKCE code_verifier (stored for token exchange)
+  redirectUri?: string; // exact redirect_uri used in /authorize (must match token exchange)
 }
 
 export interface VerifyResult {
@@ -160,6 +161,7 @@ export class DAuthProvider implements OpenID3Provider {
       authUrl: authUrl.toString(),
       expiresAt: Date.now() + 600_000,
       codeVerifier,
+      redirectUri,
     };
   }
 

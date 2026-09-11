@@ -32,6 +32,7 @@ export interface OpenID3Link {
   txHash?: string;
   error?: string;
   codeVerifier?: string; // PKCE code_verifier for token exchange
+  redirectUri?: string; // exact redirect_uri used in /authorize (must match token exchange)
   createdAt: number;
   updatedAt: number;
   expiresAt: number;
@@ -252,7 +253,7 @@ async function fetchTwitterUser(token: string): Promise<ProviderUser> {
   return { id: data.data.id, handle: data.data.username };
 }
 
-async function exchangeDiscordCode(code: string): Promise<TokenResponse> {
+async function exchangeDiscordCode(code: string, redirectUri: string): Promise<TokenResponse> {
   const config = getOAuthConfig().discord;
   const res = await fetch("https://discord.com/api/oauth2/token", {
     method: "POST",
@@ -262,6 +263,7 @@ async function exchangeDiscordCode(code: string): Promise<TokenResponse> {
       client_secret: config.clientSecret,
       grant_type: "authorization_code",
       code,
+      redirect_uri: redirectUri,
     }),
   });
   if (!res.ok) {
@@ -304,7 +306,8 @@ export async function exchangeOAuthCode(
       );
     }
     case "discord":
-      return fetchDiscordUser((await exchangeDiscordCode(code)).access_token);
+      if (!record.redirectUri) throw new Error("Missing redirect_uri for Discord token exchange");
+      return fetchDiscordUser((await exchangeDiscordCode(code, record.redirectUri)).access_token);
     default:
       throw new Error(`Unsupported provider: ${providerId}`);
   }
@@ -336,6 +339,7 @@ export async function startLinking(
     providerId,
     providerName: providerId,
     codeVerifier: session.codeVerifier,
+    redirectUri: session.redirectUri,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     expiresAt: session.expiresAt,
