@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { randomUUID, createHash, randomBytes } from "crypto";
+import { randomUUID } from "crypto";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import rateLimit from "express-rate-limit";
@@ -169,12 +169,7 @@ router.get("/twitter/start", async (req, res) => {
       return;
     }
 
-    // Generate PKCE
-    const codeVerifier = randomBytes(32).toString("base64url");
-    const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
-
-    // Update link record with code_verifier
-    record.codeVerifier = codeVerifier;
+    // Update link record (PKCE no longer used for Twitter; keep for future providers)
     record.updatedAt = Date.now();
     persistLink(record);
 
@@ -182,15 +177,14 @@ router.get("/twitter/start", async (req, res) => {
     // registered in the X Developer Portal and the token-exchange redirect_uri.
     const redirectUri = twitterRedirectUri();
 
-    // Build Twitter auth URL
+    // Build Twitter auth URL — Confidential client uses client_secret_basic
+    // auth at token exchange; no PKCE parameters in the authorize request.
     const authUrl = new URL("https://twitter.com/i/oauth2/authorize");
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("client_id", config.clientId);
     authUrl.searchParams.set("redirect_uri", redirectUri);
     authUrl.searchParams.set("state", linkId);
     authUrl.searchParams.set("scope", "tweet.read users.read");
-    authUrl.searchParams.set("code_challenge", codeChallenge);
-    authUrl.searchParams.set("code_challenge_method", "S256");
 
     res.redirect(authUrl.toString());
   } catch (err) {
@@ -213,11 +207,6 @@ router.get("/twitter/callback", async (req, res) => {
     const record = getLink(linkId);
     if (!record) {
       res.redirect(`${FRONTEND_URL}/openid3?error=link_not_found`);
-      return;
-    }
-
-    if (!record.codeVerifier) {
-      res.redirect(`${FRONTEND_URL}/openid3?error=missing_code_verifier`);
       return;
     }
 

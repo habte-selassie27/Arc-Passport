@@ -63,7 +63,6 @@ function getOAuthConfig(): Record<OpenID3ProviderId, ProviderOAuthConfig> {
       authorizeUrl: "https://twitter.com/i/oauth2/authorize",
       tokenUrl: "https://api.twitter.com/2/oauth2/token",
       scope: "users.read",
-      requiresPkce: true,
       extraParams: { response_type: "code" },
     },
     discord: {

@@ -215,7 +215,7 @@ async function fetchGithubUser(token: string): Promise<ProviderUser> {
   return { id: String(data.id), handle: data.login };
 }
 
-async function exchangeTwitterCode(code: string, codeVerifier: string, redirectUri: string): Promise<TokenResponse> {
+async function exchangeTwitterCode(code: string, redirectUri: string): Promise<TokenResponse> {
   const config = getOAuthConfig().twitter;
   const credentials = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64");
   const res = await fetch("https://api.twitter.com/2/oauth2/token", {
@@ -229,7 +229,6 @@ async function exchangeTwitterCode(code: string, codeVerifier: string, redirectU
       grant_type: "authorization_code",
       client_id: config.clientId,
       redirect_uri: redirectUri,
-      code_verifier: codeVerifier,
     }),
   });
   if (!res.ok) {
@@ -299,10 +298,9 @@ export async function exchangeOAuthCode(
     case "github":
       return fetchGithubUser((await exchangeGithubCode(code)).access_token);
     case "twitter": {
-      if (!record.codeVerifier) throw new Error("Missing code_verifier for Twitter PKCE");
       // Must match the redirect_uri sent to /authorize exactly.
       return fetchTwitterUser(
-        (await exchangeTwitterCode(code, record.codeVerifier, twitterRedirectUri())).access_token
+        (await exchangeTwitterCode(code, twitterRedirectUri())).access_token
       );
     }
     case "discord":
