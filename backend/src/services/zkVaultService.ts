@@ -76,15 +76,24 @@ function upsert(record: VaultCommitment): void {
 // ── On-chain reads ──
 
 async function isClaimValidOnChain(claimId: string): Promise<boolean> {
-  if (!process.env.ATTESTATION_REGISTRY_ADDRESS) return false;
+  if (!process.env.ATTESTATION_REGISTRY_ADDRESS) {
+    console.warn("[zkVault] isClaimValidOnChain: ATTESTATION_REGISTRY_ADDRESS not set");
+    return false;
+  }
   try {
-    return (await publicClient.readContract({
+    const valid = (await publicClient.readContract({
       address: process.env.ATTESTATION_REGISTRY_ADDRESS as `0x${string}`,
       abi: ATTESTATION_REGISTRY_ABI,
       functionName: "isValid",
       args: [claimId as `0x${string}`],
     })) as boolean;
-  } catch {
+    return valid;
+  } catch (err) {
+    console.error("[zkVault] isClaimValidOnChain failed", {
+      claimId,
+      registryAddress: process.env.ATTESTATION_REGISTRY_ADDRESS,
+      error: (err as Error).message,
+    });
     return false;
   }
 }
@@ -262,6 +271,12 @@ export async function commitVault(input: {
 
 /**
  * Get the vault commitment status for a wallet (on-chain validity checked).
+ *
+ * If the local record's claimId reports invalid, re-discovers the claim
+ * on-chain via recoverClaimId + readClaimTimes.  This handles:
+ *   - JSONL wipe (Render redeploys) where the local claimId was never restored
+ *   - Stale claimId from a failed commit attempt
+ *   - RPC failures that silently returned false in isClaimValidOnChain
  */
 export async function getVaultStatus(
   subject: `0x${string}`
@@ -281,18 +296,74 @@ export async function getVaultStatus(
     .filter((r) => r.subject.toLowerCase() === subject.toLowerCase())
     .sort((a, b) => b.committedAt - a.committedAt)[0];
 
-  if (!record) return { committed: false, isValid: false };
+  // Fast path: local record has a valid on-chain claim.
+  if (record?.claimId) {
+    const valid = await isClaimValidOnChain(record.claimId);
+    if (valid) {
+      return {
+        committed: true,
+        documentType: record.documentType,
+        vaultCid: record.vaultCid,
+        fieldsHash: record.fieldsHash,
+        committedAt: record.committedAt,
+        expiresAt: record.expiresAt,
+        claimId: record.claimId,
+        txHash: record.txHash,
+        isValid: true,
+      };
+    }
+    // Stored claimId is invalid — fall through to re-discovery.
+    console.warn("[zkVault] getVaultStatus: stored claimId invalid, re-discovering on-chain", {
+      subject,
+      storedClaimId: record.claimId,
+    });
+  }
 
-  const isValid = record.claimId ? await isClaimValidOnChain(record.claimId) : false;
-  return {
-    committed: true,
-    documentType: record.documentType,
-    vaultCid: record.vaultCid,
-    fieldsHash: record.fieldsHash,
-    committedAt: record.committedAt,
-    expiresAt: record.expiresAt,
-    claimId: record.claimId,
-    txHash: record.txHash,
-    isValid,
-  };
+  // Re-discover from on-chain state (survives JSONL wipe / stale data).
+  const onChainClaim = await recoverClaimId(subject, ID_VAULT_COMMITMENT_ID);
+  if (onChainClaim) {
+    const valid = await isClaimValidOnChain(onChainClaim);
+    if (valid) {
+      const times = await readClaimTimes(onChainClaim);
+      const updated: VaultCommitment = {
+        subject,
+        vaultCid: record?.vaultCid ?? "",
+        fieldsHash: record?.fieldsHash ?? "",
+        documentType: record?.documentType ?? "unknown",
+        nullifier: record?.nullifier ?? "",
+        claimId: onChainClaim,
+        txHash: record?.txHash,
+        committedAt: times?.issuedAt ?? record?.committedAt ?? Math.floor(Date.now() / 1000),
+        expiresAt: times?.expiresAt ?? record?.expiresAt ?? 0,
+      };
+      upsert(updated);
+      return {
+        committed: true,
+        documentType: updated.documentType,
+        vaultCid: updated.vaultCid,
+        fieldsHash: updated.fieldsHash,
+        committedAt: updated.committedAt,
+        expiresAt: updated.expiresAt,
+        claimId: updated.claimId,
+        txHash: updated.txHash,
+        isValid: true,
+      };
+    }
+  }
+
+  // No valid on-chain claim found.
+  if (record) {
+    return {
+      committed: true,
+      documentType: record.documentType,
+      vaultCid: record.vaultCid,
+      fieldsHash: record.fieldsHash,
+      committedAt: record.committedAt,
+      expiresAt: record.expiresAt,
+      claimId: record.claimId,
+      txHash: record.txHash,
+      isValid: false,
+    };
+  }
+  return { committed: false, isValid: false };
 }
