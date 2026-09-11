@@ -22,3 +22,7 @@ recovery/
 # Documentation (untracked)
 *.md
 !README.md
+
+# Ephemeral runtime files
+backend/.claim-payloads.json
+backend/.openid3-links.jsonl
