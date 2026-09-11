@@ -117,6 +117,23 @@ async function recoverClaimId(
   return undefined;
 }
 
+async function readClaimTimes(
+  claimId: string
+): Promise<{ issuedAt: number; expiresAt: number } | undefined> {
+  if (!process.env.ATTESTATION_REGISTRY_ADDRESS) return undefined;
+  try {
+    const claim = (await publicClient.readContract({
+      address: process.env.ATTESTATION_REGISTRY_ADDRESS as `0x${string}`,
+      abi: ATTESTATION_REGISTRY_ABI,
+      functionName: "getClaim",
+      args: [claimId as `0x${string}`],
+    })) as unknown as [unknown, unknown, unknown, unknown, unknown, bigint, bigint];
+    return { issuedAt: Number(claim[5]), expiresAt: Number(claim[6]) };
+  } catch {
+    return undefined;
+  }
+}
+
 // ── Service ───────────────────────────────────────────────────────────────
 
 export function computeVaultNullifier(
@@ -148,7 +165,9 @@ export async function commitVault(input: {
 
   const nullifier = computeVaultNullifier(input.subject, input.fieldsHash);
 
-  // Replay/duplicate guard: one commitment per (wallet, document content)
+  // Replay/duplicate guard: one commitment per (wallet, document content).
+  // Check BOTH local store (fast) AND on-chain state (survives Render redeploys
+  // which wipe the JSONL — the on-chain source of truth).
   const all = readAll();
   const existing = all.find(
     (r) => r.nullifier === nullifier && r.claimId !== undefined
@@ -162,6 +181,36 @@ export async function commitVault(input: {
         409
       );
     }
+  }
+
+  // On-chain-only guard: even if the JSONL was wiped, a valid on-chain claim
+  // means the vault was already committed — skip re-attestation to avoid the
+  // ArcPass__ActiveClaimExists revert (surfaced as "Circle: transaction failed").
+  const onChainClaim = await recoverClaimId(input.subject, ID_VAULT_COMMITMENT_ID);
+  if (onChainClaim && await isClaimValidOnChain(onChainClaim)) {
+    const stillExisting = all.find((r) => r.claimId === onChainClaim);
+    if (stillExisting) {
+      throw new ArcPassError(
+        "VAULT_ALREADY_COMMITTED",
+        "This document is already committed for this wallet",
+        409
+      );
+    }
+    // JSONL was wiped but claim is on-chain — record it locally for future
+    // fast-path checks, then return success without re-attesting.
+    const times = await readClaimTimes(onChainClaim);
+    const record: VaultCommitment = {
+      subject: input.subject,
+      vaultCid: input.vaultCid,
+      fieldsHash: input.fieldsHash,
+      documentType: input.documentType,
+      nullifier,
+      claimId: onChainClaim,
+      committedAt: times?.issuedAt ?? Math.floor(Date.now() / 1000),
+      expiresAt: times?.expiresAt ?? Math.floor(Date.now() / 1000) + VAULT_TTL_SECONDS,
+    };
+    upsert(record);
+    return record;
   }
 
   const committedAt = Math.floor(Date.now() / 1000);
