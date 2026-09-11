@@ -103,11 +103,21 @@ describe("POST /zk/vault/commit", () => {
     expect(body.error.code).toBe("INVALID_FIELDS_HASH");
   });
 
-  it("rejects an untrusted documentType", async () => {
+  it("rejects an invalid documentType format", async () => {
     const { status, body } = await signed("/zk/vault/commit", "POST", {
       vaultCid: "ipfs://bafytest",
       fieldsHash: "0x" + "aa".repeat(32),
-      documentType: "loyalty_card",
+      documentType: "INVALID TYPE with spaces!!",
+    });
+    expect(status).toBe(400);
+    expect(body.error.code).toBe("INVALID_DOCUMENT_TYPE");
+  });
+
+  it("rejects empty documentType", async () => {
+    const { status, body } = await signed("/zk/vault/commit", "POST", {
+      vaultCid: "ipfs://bafytest",
+      fieldsHash: "0x" + "aa".repeat(32),
+      documentType: "",
     });
     expect(status).toBe(400);
     expect(body.error.code).toBe("INVALID_DOCUMENT_TYPE");

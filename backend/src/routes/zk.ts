@@ -275,7 +275,7 @@ router.get("/proof/:proofHash", async (req: Request, res: Response) => {
 
 // ── POST /zk/vault/commit — record encrypted ID vault commitment (authenticated) ──
 
-const TRUSTED_VAULT_DOC_TYPES = new Set(["passport", "national_id", "drivers_license", "residence_permit"]);
+const DOC_TYPE_RE = /^[a-z][a-z0-9_]{0,49}$/;
 
 router.post("/vault/commit", requireSignedNonce, async (req: Request, res: Response) => {
   try {
@@ -291,10 +291,10 @@ router.post("/vault/commit", requireSignedNonce, async (req: Request, res: Respo
     if (!isValidBytes32(fieldsHash)) {
       throw new ArcPassError("INVALID_FIELDS_HASH", "fieldsHash must be bytes32", 400);
     }
-    if (!documentType || !TRUSTED_VAULT_DOC_TYPES.has(documentType)) {
+    if (!documentType || typeof documentType !== "string" || !DOC_TYPE_RE.test(documentType)) {
       throw new ArcPassError(
         "INVALID_DOCUMENT_TYPE",
-        `documentType must be one of: ${[...TRUSTED_VAULT_DOC_TYPES].join(", ")}`,
+        "documentType must be a snake_case string (1–50 chars, e.g. passport, national_id, education_id)",
         400
       );
     }

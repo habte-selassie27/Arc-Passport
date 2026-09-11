@@ -32,6 +32,105 @@ import { AddressDisplay } from "../components/ui/AddressDisplay";
 
 type Tab = "overview" | "vault" | "verify" | "submit" | "status";
 
+/** Per-document-type field definitions for the manual entry form. */
+const DOC_TYPE_FIELDS: Record<string, { label: string; fields: { key: string; label: string; placeholder?: string }[] }> = {
+  passport: {
+    label: "Passport",
+    fields: [
+      { key: "documentNumber", label: "Passport Number *" },
+      { key: "surname", label: "Surname" },
+      { key: "givenNames", label: "Given Names" },
+      { key: "nationality", label: "Nationality (3-letter code)", placeholder: "e.g. USA, ETH, GBR" },
+      { key: "birthDate", label: "Birth Date", placeholder: "YYYY-MM-DD" },
+      { key: "expiryDate", label: "Expiry Date", placeholder: "YYYY-MM-DD" },
+    ],
+  },
+  national_id: {
+    label: "National ID",
+    fields: [
+      { key: "documentNumber", label: "ID Number *" },
+      { key: "surname", label: "Surname" },
+      { key: "givenNames", label: "Given Names" },
+      { key: "nationality", label: "Nationality (3-letter code)", placeholder: "e.g. USA, ETH, GBR" },
+      { key: "birthDate", label: "Birth Date", placeholder: "YYYY-MM-DD" },
+      { key: "expiryDate", label: "Expiry Date", placeholder: "YYYY-MM-DD" },
+      { key: "gender", label: "Gender", placeholder: "M / F / X" },
+    ],
+  },
+  drivers_license: {
+    label: "Driver's License",
+    fields: [
+      { key: "documentNumber", label: "License Number *" },
+      { key: "surname", label: "Surname" },
+      { key: "givenNames", label: "Given Names" },
+      { key: "birthDate", label: "Birth Date", placeholder: "YYYY-MM-DD" },
+      { key: "expiryDate", label: "Expiry Date", placeholder: "YYYY-MM-DD" },
+      { key: "class", label: "License Class", placeholder: "e.g. Class C" },
+      { key: "state", label: "State / Region" },
+    ],
+  },
+  residence_permit: {
+    label: "Residence Permit",
+    fields: [
+      { key: "documentNumber", label: "Permit Number *" },
+      { key: "surname", label: "Surname" },
+      { key: "givenNames", label: "Given Names" },
+      { key: "nationality", label: "Nationality (3-letter code)" },
+      { key: "birthDate", label: "Birth Date", placeholder: "YYYY-MM-DD" },
+      { key: "expiryDate", label: "Expiry Date", placeholder: "YYYY-MM-DD" },
+      { key: "permitType", label: "Permit Type", placeholder: "e.g. Work, Student, Family" },
+    ],
+  },
+  education_id: {
+    label: "Education ID",
+    fields: [
+      { key: "institution", label: "Institution *" },
+      { key: "program", label: "Program / Major" },
+      { key: "degree", label: "Degree / Level", placeholder: "e.g. BSc, MSc, PhD" },
+      { key: "studentId", label: "Student ID" },
+      { key: "enrollmentDate", label: "Enrollment Date", placeholder: "YYYY-MM-DD" },
+      { key: "graduationDate", label: "Graduation Date", placeholder: "YYYY-MM-DD" },
+      { key: "status", label: "Status", placeholder: "e.g. Active, Graduated" },
+    ],
+  },
+  work_permit: {
+    label: "Work Permit",
+    fields: [
+      { key: "documentNumber", label: "Permit Number *" },
+      { key: "surname", label: "Surname" },
+      { key: "givenNames", label: "Given Names" },
+      { key: "employer", label: "Employer" },
+      { key: "permitType", label: "Permit Type", placeholder: "e.g. H-1B, Blue Card" },
+      { key: "birthDate", label: "Birth Date", placeholder: "YYYY-MM-DD" },
+      { key: "expiryDate", label: "Expiry Date", placeholder: "YYYY-MM-DD" },
+    ],
+  },
+  voter_id: {
+    label: "Voter ID",
+    fields: [
+      { key: "documentNumber", label: "Voter ID Number *" },
+      { key: "surname", label: "Surname" },
+      { key: "givenNames", label: "Given Names" },
+      { key: "constituency", label: "Constituency / District" },
+      { key: "birthDate", label: "Birth Date", placeholder: "YYYY-MM-DD" },
+      { key: "registrationDate", label: "Registration Date", placeholder: "YYYY-MM-DD" },
+    ],
+  },
+  other: {
+    label: "Other Document",
+    fields: [
+      { key: "documentNumber", label: "Document Number *" },
+      { key: "fullName", label: "Full Name" },
+      { key: "issueDate", label: "Issue Date", placeholder: "YYYY-MM-DD" },
+      { key: "expiryDate", label: "Expiry Date", placeholder: "YYYY-MM-DD" },
+      { key: "description", label: "Document Description" },
+    ],
+  },
+};
+
+/** Document types that use ICAO MRZ (passport-style two-line barcode at bottom). */
+const MRZ_DOC_TYPES = new Set(["passport", "national_id"]);
+
 // ── Main Page ─────────────────────────────────────────────────────────────
 
 export function ZKPassportPage() {
@@ -506,16 +605,11 @@ function VaultTab() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const { data: idHistory } = useIdentityHistory(address);
+  const [docType, setDocType] = useState<string>("national_id");
   const [showManual, setShowManual] = useState(false);
-  const [manual, setManual] = useState({
-    documentType: "national_id",
-    documentNumber: "",
-    surname: "",
-    givenNames: "",
-    nationality: "",
-    birthDate: "",
-    expiryDate: "",
-  });
+  const [manualFields, setManualFields] = useState<Record<string, string>>({});
+  const docConfig = DOC_TYPE_FIELDS[docType] ?? DOC_TYPE_FIELDS.other;
+  const isMrzType = MRZ_DOC_TYPES.has(docType);
   // Public badge endpoint — NO wallet signature, safe to query automatically.
   // NEVER auto-call vault.refreshStatus() (signed) in an effect/useQuery:
   // each call prompts a wallet signature, and an effect depending on an
@@ -535,7 +629,6 @@ function VaultTab() {
       setBack(f);
       setBackPreview(f ? URL.createObjectURL(f) : null);
     }
-    setShowManual(false);
     setFaceResult(null);
     setFaceError(null);
     vault.reset();
@@ -667,9 +760,13 @@ function VaultTab() {
   }, [refetchBadge]);
 
   const handleCommit = async () => {
-    // MRZ lives on the back side — OCR that, fall back to front if it's the only photo.
     const ocrFile = back ?? front;
     if (!ocrFile || !faceResult?.pass) return;
+    if (!isMrzType) {
+      // Non-MRZ documents go straight to manual entry.
+      setShowManual(true);
+      return;
+    }
     try {
       await vault.commitVault(
         ocrFile,
@@ -679,20 +776,21 @@ function VaultTab() {
       );
       refreshBadge();
     } catch (err) {
-      // Documents without an ICAO MRZ (QR-code national IDs, US licenses)
-      // can never pass OCR — open the manual path instead of dead-ending.
       if (/valid MRZ/i.test((err as Error).message)) setShowManual(true);
-      /* error already surfaced via vault.error */
     }
   };
 
   const handleManualCommit = async () => {
     const ocrFile = back ?? front;
-    if (!ocrFile || !manual.documentNumber.trim() || !faceResult?.pass) return;
+    const requiredField = docConfig.fields.find((f) => f.key === "documentNumber" || f.key === "institution" || f.key === "documentNumber");
+    const hasRequired = requiredField ? manualFields[requiredField.key]?.trim() : true;
+    if (!ocrFile || !hasRequired || !faceResult?.pass) return;
     try {
-      const fields: Record<string, string> = Object.fromEntries(
-        Object.entries(manual).map(([k, v]) => [k, v.trim()])
-      );
+      const fields: Record<string, string> = { documentType: docType };
+      for (const f of docConfig.fields) {
+        const v = manualFields[f.key];
+        if (v?.trim()) fields[f.key] = v.trim();
+      }
       await vault.commitVault(
         ocrFile,
         fields,
@@ -811,16 +909,37 @@ function VaultTab() {
       {/* Upload & commit flow */}
       <Card style={{ marginTop: "var(--space-4)" }}>
         <h3 className="t-sm" style={{ fontWeight: 600, marginBottom: "var(--space-3)" }}>Scan or Upload Document</h3>
+
+        {/* Document type selector */}
+        <div style={{ marginBottom: "var(--space-4)" }}>
+          <label className="t-xs c-subtle" style={{ display: "block", marginBottom: "var(--space-1)" }}>Document Type</label>
+          <select
+            className="select"
+            value={docType}
+            onChange={(e) => {
+              setDocType(e.target.value);
+              setManualFields({});
+              setShowManual(false);
+              vault.reset();
+            }}
+          >
+            {Object.entries(DOC_TYPE_FIELDS).map(([key, cfg]) => (
+              <option key={key} value={key}>{cfg.label}</option>
+            ))}
+          </select>
+        </div>
+
         <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-4)" }}>
-          Upload both sides. The MRZ (back side) is read locally and its
-          check digits validated — a format-level authenticity check.
-          Both photos are encrypted on-device before leaving the browser.
+          {isMrzType
+            ? "Upload both sides. The MRZ (back side) is read locally and its check digits validated — a format-level authenticity check."
+            : "Upload front and back photos of your document. Fields are entered manually below and encrypted on-device."}
+          {" "}Both photos are encrypted on-device before leaving the browser.
         </p>
 
         <div className="grid gap-3 sm:grid-cols-2">
           {([
             ["front", "Front side", frontPreview, "📷 Front (photo side)"],
-            ["back", "Back side (MRZ)", backPreview, "📷 Back (MRZ side)"],
+            ["back", isMrzType ? "Back side (MRZ)" : "Back side", backPreview, isMrzType ? "📷 Back (MRZ side)" : "📷 Back side"],
           ] as const).map(([slot, label, url, placeholder]) => (
             <div key={slot}>
               <p className="t-xs c-subtle" style={{ marginBottom: "var(--space-2)" }}>{label}</p>
@@ -947,44 +1066,27 @@ function VaultTab() {
 
         {(front || back) && !vault.isBusy && (
           <div style={{ marginTop: "var(--space-3)" }}>
-            <Button variant="ghost" size="sm" onClick={() => setShowManual((s) => !s)}>
-              {showManual ? "Hide manual entry" : "No MRZ on your document? Enter details manually"}
-            </Button>
-            {showManual && (
+            {isMrzType && !showManual && (
+              <Button variant="ghost" size="sm" onClick={() => setShowManual(true)}>
+                No MRZ on your document? Enter details manually
+              </Button>
+            )}
+            {(showManual || !isMrzType) && (
               <div className="grid gap-3" style={{ marginTop: "var(--space-3)" }}>
                 <p className="t-xs c-subtle">
-                  US driver&apos;s licenses and state IDs have no ICAO MRZ — OCR can&apos;t read them.
-                  Enter the fields yourself; they&apos;re still encrypted on-device before leaving the browser.
+                  {isMrzType
+                    ? "Enter the fields from your document. They&apos;re encrypted on-device before leaving the browser."
+                    : `Enter the fields from your ${docConfig.label.toLowerCase()}. They&apos;re encrypted on-device before leaving the browser.`}
                 </p>
-                <div>
-                  <label className="t-xs c-subtle" style={{ display: "block", marginBottom: "var(--space-1)" }}>Document Type</label>
-                  <select
-                    className="select"
-                    value={manual.documentType}
-                    onChange={(e) => setManual((m) => ({ ...m, documentType: e.target.value }))}
-                  >
-                    <option value="passport">Passport</option>
-                    <option value="national_id">National ID</option>
-                    <option value="drivers_license">Driver&apos;s License</option>
-                    <option value="residence_permit">Residence Permit</option>
-                  </select>
-                </div>
-                {([
-                  ["documentNumber", "Document Number *"],
-                  ["surname", "Surname"],
-                  ["givenNames", "Given Names"],
-                  ["nationality", "Nationality (3-letter code)"],
-                  ["birthDate", "Birth Date"],
-                  ["expiryDate", "Expiry Date"],
-                ] as const).map(([key, label]) => (
-                  <div key={key}>
-                    <label className="t-xs c-subtle" style={{ display: "block", marginBottom: "var(--space-1)" }}>{label}</label>
+                {docConfig.fields.map((f) => (
+                  <div key={f.key}>
+                    <label className="t-xs c-subtle" style={{ display: "block", marginBottom: "var(--space-1)" }}>{f.label}</label>
                     <Input
-                      mono={key === "documentNumber"}
+                      mono={f.key === "documentNumber" || f.key === "studentId"}
                       type="text"
-                      value={manual[key]}
-                      onChange={(e) => setManual((m) => ({ ...m, [key]: e.target.value }))}
-                      placeholder={label}
+                      value={manualFields[f.key] ?? ""}
+                      onChange={(e) => setManualFields((m) => ({ ...m, [f.key]: e.target.value }))}
+                      placeholder={f.placeholder ?? f.label}
                     />
                   </div>
                 ))}
@@ -992,10 +1094,10 @@ function VaultTab() {
                   <Button
                     variant="primary"
                     onClick={() => void handleManualCommit()}
-                    disabled={!manual.documentNumber.trim() || !faceResult?.pass || vault.isBusy}
+                    disabled={!faceResult?.pass || vault.isBusy}
                     loading={vault.isBusy}
                   >
-                    Encrypt &amp; Commit Manually
+                    Encrypt &amp; Commit
                   </Button>
                 </div>
               </div>
@@ -1003,14 +1105,16 @@ function VaultTab() {
           </div>
         )}
 
+        {isMrzType && (
         <div className="flex gap-2" style={{ marginTop: "var(--space-4)" }}>
           <Button variant="primary" onClick={() => void handleCommit()} disabled={!(front || back) || !faceResult?.pass || vault.isBusy} loading={vault.isBusy}>
-            {vault.commitResult ? "Committed ✓" : "Encrypt & Commit"}
+            {vault.commitResult ? "Committed ✓" : "OCR & Commit"}
           </Button>
           {(front || back) && !vault.isBusy && (
             <Button variant="ghost" onClick={() => clearFiles()}>Clear</Button>
           )}
         </div>
+        )}
 
         {vault.commitResult && (
           <Card style={{ marginTop: "var(--space-4)", background: "var(--color-surface-1)" }}>
