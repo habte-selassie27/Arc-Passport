@@ -184,7 +184,7 @@ router.get("/twitter/start", async (req, res) => {
     authUrl.searchParams.set("client_id", config.clientId);
     authUrl.searchParams.set("redirect_uri", redirectUri);
     authUrl.searchParams.set("state", linkId);
-    authUrl.searchParams.set("scope", "tweet.read users.read");
+    authUrl.searchParams.set("scope", "tweet.read users.read email");
 
     res.redirect(authUrl.toString());
   } catch (err) {
