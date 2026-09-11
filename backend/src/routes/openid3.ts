@@ -188,7 +188,7 @@ router.get("/twitter/start", async (req, res) => {
     authUrl.searchParams.set("client_id", config.clientId);
     authUrl.searchParams.set("redirect_uri", redirectUri);
     authUrl.searchParams.set("state", linkId);
-    authUrl.searchParams.set("scope", "tweet.read users.read offline.access");
+    authUrl.searchParams.set("scope", "tweet.read users.read");
     authUrl.searchParams.set("code_challenge", codeChallenge);
     authUrl.searchParams.set("code_challenge_method", "S256");
 
