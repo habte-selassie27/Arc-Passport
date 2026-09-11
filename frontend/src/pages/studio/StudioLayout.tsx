@@ -17,6 +17,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorState } from "../../components/ui/ErrorState";
 import { Spinner } from "../../components/ui/Spinner";
 import { AddressDisplay } from "../../components/ui/AddressDisplay";
+import { API_BASE_URL } from "../../config/api";
 
 const TABS: Array<{ to: string; label: string; exact?: boolean }> = [
   { to: "/studio", label: "Overview", exact: true },
@@ -30,7 +31,10 @@ const TABS: Array<{ to: string; label: string; exact?: boolean }> = [
 ];
 
 function StudioHeader() {
-  const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+  // API_BASE_URL falls back to the same-origin /api proxy in prod — never
+  // hardcode the Render URL here (Vite bakes env at build time; a Render
+  // URL forces cross-origin fetches that break behind adblockers/QUIC).
+  const apiBase = API_BASE_URL;
   return (
     <div className="studio-header">
       <div>

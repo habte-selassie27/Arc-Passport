@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { StatCard } from "../ui/StatCard";
+import { apiUrl } from "../../config/api";
 
 interface EventAnalytics {
   lastMinute: number;
@@ -22,7 +23,7 @@ export function AnalyticsDashboard() {
 
     const fetchAnalytics = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001"}/v1/analytics`);
+        const res = await fetch(apiUrl("/v1/analytics"));
         const json = await res.json();
         if (mounted && json.success) {
           setData(json.data);

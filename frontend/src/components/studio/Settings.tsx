@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ALL_SERVICE_KEYS, SERVICE_LABELS, type ServiceKey } from "../../types/passport";
+import { apiUrl } from "../../config/api";
 import { Card } from "../ui/Card";
 
 interface WalletStatus {
@@ -21,7 +22,7 @@ export function Settings() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001"}/v1/settings/status`);
+        const res = await fetch(apiUrl("/v1/settings/status"));
         const json = await res.json();
         if (json.success) setData(json.data);
         else setError("Failed to load settings");
